@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "Dashboard Invernadero",
+    "slug": "dashboard-tablet",
+    "version": "1.0.0",
+    "orientation": "landscape",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#4CAF50"
+    },
+    "ios": {
+      "bundleIdentifier": "com.dashboardtablet.invernadero", 
+      "supportsTablet": true,
+      "requireFullScreen": false
+    },
+    "android": {
+      "package": "com.dashboardtablet.invernadero",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "notification": {
+      "icon": "./assets/icon.png",
+      "color": "#4CAF50",
+      "vapidPublicKey": "BAqarpXUYhqa6TYf-8ZhpMLYQ9ofT9UlMToJU8DaS4XBmoRk95y_4VsZdv0R5doovi9KpRVo9saZ6q5WFQr7G6M",
+      "serviceWorkerPath": "./sw.js"
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#4CAF50",
+          "mode": "production"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "dashboard-invernadero"
+      }
+    }
+  }
+}
