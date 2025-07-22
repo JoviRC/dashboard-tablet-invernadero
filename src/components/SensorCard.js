@@ -1,8 +1,9 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColors } from '../contexts/ThemeContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { ColorHelpers } from '../config/colors';
+import DataSourceIndicator from './DataSourceIndicator';
 
 const SensorCard = ({ 
   title, 
@@ -16,9 +17,11 @@ const SensorCard = ({
   sensorId,
   lastUpdate,
   isCalculated = false,
-  calculationMethod
+  calculationMethod,
+  source = 'unknown',
+  isConnected = false
 }) => {
-  const theme = useThemeColors();
+  const { theme } = useTheme();
   const styles = createStyles(theme);
 
   const getStatusColor = () => {
@@ -48,13 +51,19 @@ const SensorCard = ({
           <Text style={styles.title}>{title}</Text>
         </View>
         <View style={styles.indicatorContainer}>
-          {isReal && (
-            <Ionicons name="radio" size={16} color={theme.success} style={styles.realIndicator} />
-          )}
+          <DataSourceIndicator 
+            isReal={isReal}
+            isConnected={isConnected}
+            lastUpdate={lastUpdate}
+            sensorId={sensorId}
+            source={source}
+            size="small"
+          />
           <Ionicons 
             name={getTrendIcon()} 
             size={20} 
             color={getStatusColor()} 
+            style={styles.trendIcon}
           />
         </View>
       </View>
@@ -74,12 +83,26 @@ const SensorCard = ({
         </View>
       )}
 
-      {isCalculated && (
-        <View style={styles.calculatedContainer}>
-          <Ionicons name="calculator-outline" size={12} color={theme.textSecondary} />
-          <Text style={styles.calculatedText}>Calculado</Text>
-        </View>
-      )}
+      <View style={styles.bottomRow}>
+        {isCalculated && (
+          <View style={styles.calculatedContainer}>
+            <Ionicons name="calculator-outline" size={12} color={theme.colors.onSurfaceVariant} />
+            <Text style={styles.calculatedText}>Calculado</Text>
+          </View>
+        )}
+        
+        {isReal && lastUpdate && (
+          <View style={styles.updateContainer}>
+            <Text style={styles.updateText}>
+              {lastUpdate.toLocaleTimeString('es-ES', { 
+                hour: '2-digit', 
+                minute: '2-digit',
+                second: '2-digit'
+              })}
+            </Text>
+          </View>
+        )}
+      </View>
     </View>
   );
 };
@@ -94,13 +117,14 @@ const createStyles = (theme) => StyleSheet.create({
     minWidth: 160,
     flex: 1,
     borderWidth: 1,
-    borderColor: theme.border,
+    borderColor: theme.colors.outline,
+    borderLeftWidth: 4,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   titleContainer: {
     flexDirection: 'row',
@@ -108,61 +132,73 @@ const createStyles = (theme) => StyleSheet.create({
     flex: 1,
   },
   title: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginLeft: 10,
-    color: theme.textPrimary,
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.onSurface,
+    marginLeft: 8,
     flex: 1,
   },
   indicatorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
   },
-  realIndicator: {
-    marginRight: 8,
+  trendIcon: {
+    marginLeft: 4,
   },
   valueContainer: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    justifyContent: 'center',
-    marginTop: 8,
+    marginBottom: 8,
   },
   value: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: 'bold',
-    textAlign: 'center',
+    marginRight: 4,
   },
   unit: {
-    fontSize: 18,
-    color: theme.textSecondary,
-    marginLeft: 6,
+    fontSize: 16,
+    color: theme.colors.onSurfaceVariant,
     fontWeight: '500',
   },
   idealContainer: {
-    marginTop: 12,
-    backgroundColor: theme.backgroundSecondary,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    alignSelf: 'center',
+    marginBottom: 8,
   },
   idealText: {
     fontSize: 12,
-    color: theme.textSecondary,
-    textAlign: 'center',
-    fontWeight: '500',
+    color: theme.colors.onSurfaceVariant,
+    fontStyle: 'italic',
+  },
+  bottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
   },
   calculatedContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
+    backgroundColor: theme.colors.surfaceVariant,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   calculatedText: {
-    fontSize: 11,
-    color: theme.textSecondary,
+    fontSize: 10,
+    color: theme.colors.onSurfaceVariant,
     marginLeft: 4,
-    fontStyle: 'italic',
+    fontWeight: '500',
+  },
+  updateContainer: {
+    backgroundColor: theme.colors.surfaceVariant,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  updateText: {
+    fontSize: 10,
+    color: theme.colors.onSurfaceVariant,
+    fontFamily: 'monospace',
   },
 });
 

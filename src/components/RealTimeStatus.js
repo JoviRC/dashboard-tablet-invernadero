@@ -5,23 +5,24 @@ import {
   StyleSheet
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../contexts/ThemeContext';
 
 const RealTimeStatus = ({ sensors, activeSensorIds, apiConnected, lastUpdate }) => {
+  const { theme } = useTheme();
   const getConnectionStatusIcon = () => {
     if (apiConnected) {
-      return <Ionicons name="wifi" size={16} color="#4CAF50" />;
+      return <Ionicons name="wifi" size={16} color={theme.colors.success} />;
     } else {
-      return <Ionicons name="wifi-off" size={16} color="#F44336" />;
+      return <Ionicons name="wifi-off" size={16} color={theme.colors.error} />;
     }
   };
 
   const getDataFreshnessColor = () => {
-    if (!lastUpdate) return '#999';
-    
+    if (!lastUpdate) return theme.colors.onSurfaceVariant;
     const timeDiff = (new Date() - lastUpdate) / 1000; // segundos
-    if (timeDiff < 60) return '#4CAF50'; // Menos de 1 minuto - verde
-    if (timeDiff < 300) return '#FF9800'; // Menos de 5 minutos - naranja
-    return '#F44336'; // Más de 5 minutos - rojo
+    if (timeDiff < 60) return theme.colors.success; // Menos de 1 minuto - verde
+    if (timeDiff < 300) return theme.colors.warning; // Menos de 5 minutos - naranja
+    return theme.colors.error; // Más de 5 minutos - rojo
   };
 
   const getTimeSinceUpdate = () => {
@@ -36,22 +37,20 @@ const RealTimeStatus = ({ sensors, activeSensorIds, apiConnected, lastUpdate }) 
   const hasRealSensorData = activeSensorIds.length > 0 && apiConnected;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }] }>
       <View style={styles.statusRow}>
         <View style={styles.statusItem}>
           {getConnectionStatusIcon()}
-          <Text style={styles.statusText}>
+          <Text style={[styles.statusText, { color: theme.colors.text }] }>
             {apiConnected ? 'Conectado' : 'Desconectado'}
           </Text>
         </View>
-        
         <View style={styles.statusItem}>
-          <Ionicons name="hardware-chip" size={16} color={hasRealSensorData ? '#4CAF50' : '#999'} />
-          <Text style={[styles.statusText, { color: hasRealSensorData ? '#4CAF50' : '#999' }]}>
+          <Ionicons name="hardware-chip" size={16} color={hasRealSensorData ? theme.colors.success : theme.colors.onSurfaceVariant} />
+          <Text style={[styles.statusText, { color: hasRealSensorData ? theme.colors.success : theme.colors.onSurfaceVariant }]}>
             {activeSensorIds.length} sensor(es)
           </Text>
         </View>
-        
         <View style={styles.statusItem}>
           <Ionicons name="time" size={16} color={getDataFreshnessColor()} />
           <Text style={[styles.statusText, { color: getDataFreshnessColor() }]}>
@@ -59,11 +58,10 @@ const RealTimeStatus = ({ sensors, activeSensorIds, apiConnected, lastUpdate }) 
           </Text>
         </View>
       </View>
-      
       {!hasRealSensorData && activeSensorIds.length === 0 && (
-        <View style={styles.noSensorsWarning}>
-          <Ionicons name="warning" size={16} color="#FF9800" />
-          <Text style={styles.warningText}>
+        <View style={[styles.noSensorsWarning, { backgroundColor: theme.colors.warningBackground, borderColor: theme.colors.warning }] }>
+          <Ionicons name="warning" size={16} color={theme.colors.warning} />
+          <Text style={[styles.warningText, { color: theme.colors.warningText }] }>
             No hay sensores configurados. Configure sensores en la sección "Gestión de Sensores".
           </Text>
         </View>
@@ -74,12 +72,10 @@ const RealTimeStatus = ({ sensors, activeSensorIds, apiConnected, lastUpdate }) 
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#f8f9fa',
     margin: 16,
     padding: 12,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#e9ecef',
   },
   statusRow: {
     flexDirection: 'row',
@@ -95,7 +91,6 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     marginLeft: 4,
-    color: '#666',
     fontWeight: '500',
   },
   sensorValues: {
@@ -107,7 +102,6 @@ const styles = StyleSheet.create({
   valuesTitle: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 8,
   },
   valuesGrid: {
@@ -116,18 +110,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   sensorValueCard: {
-    backgroundColor: 'white',
     padding: 8,
     borderRadius: 6,
     marginBottom: 6,
     width: '48%',
     borderWidth: 1,
-    borderColor: '#e9ecef',
   },
   sensorLabel: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#666',
     marginBottom: 2,
   },
   sensorValue: {
@@ -137,34 +128,27 @@ const styles = StyleSheet.create({
   },
   idealRange: {
     fontSize: 9,
-    color: '#999',
   },
   noSensorsWarning: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff3cd',
     padding: 8,
     borderRadius: 6,
     marginTop: 8,
     borderWidth: 1,
-    borderColor: '#ffeaa7',
   },
   warningText: {
     fontSize: 11,
-    color: '#856404',
     marginLeft: 6,
     flex: 1,
   },
   valueItem: {
     fontSize: 11,
-    color: '#666',
-    backgroundColor: 'white',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
     marginBottom: 4,
     borderWidth: 1,
-    borderColor: '#e9ecef',
   },
 });
 

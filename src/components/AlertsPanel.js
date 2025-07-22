@@ -1,14 +1,17 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColors } from '../contexts/ThemeContext';
-import { ColorHelpers } from '../config/colors';
+import { useTheme } from '../contexts/ThemeContext';
 
 const AlertCard = ({ alert, onDismiss }) => {
-  const theme = useThemeColors();
-  
+  const { theme } = useTheme();
   const getAlertColor = () => {
-    return ColorHelpers.getAlertColor(alert.type, theme);
+    switch (alert.type) {
+      case 'critical': return theme.colors.error;
+      case 'warning': return theme.colors.warning;
+      case 'info': return theme.colors.info;
+      default: return theme.colors.border;
+    }
   };
 
   const getAlertIcon = () => {
@@ -28,37 +31,34 @@ const AlertCard = ({ alert, onDismiss }) => {
           size={20} 
           color={getAlertColor()} 
         />
-        <Text style={styles.alertMessage}>{alert.message}</Text>
+        <Text style={[styles.alertMessage, { color: theme.colors.text }]}>{alert.message}</Text>
         {alert.isActive && onDismiss && (
           <TouchableOpacity onPress={() => onDismiss(alert.id)}>
-            <Ionicons name="close" size={20} color={theme.textSecondary} />
+            <Ionicons name="close" size={20} color={theme.colors.onSurfaceVariant} />
           </TouchableOpacity>
         )}
       </View>
-      <Text style={styles.alertTimestamp}>{alert.timestamp}</Text>
+      <Text style={[styles.alertTimestamp, { color: theme.colors.onSurfaceVariant }]}>{alert.timestamp}</Text>
     </View>
   );
 };
 
 const AlertsPanel = ({ alerts, onDismissAlert }) => {
-  const theme = useThemeColors();
-  const styles = getStyles(theme);
-  
+  const { theme } = useTheme();
   const activeAlerts = alerts.filter(alert => alert.isActive);
-  
   if (activeAlerts.length === 0) {
     return (
       <View style={styles.noAlertsContainer}>
-        <Ionicons name="checkmark-circle" size={48} color={theme.success} />
-        <Text style={styles.noAlertsText}>No hay alertas activas</Text>
-        <Text style={styles.noAlertsSubtext}>Todo funciona correctamente</Text>
+        <Ionicons name="checkmark-circle" size={48} color={theme.colors.success} />
+        <Text style={[styles.noAlertsText, { color: theme.colors.success }]}>No hay alertas activas</Text>
+        <Text style={[styles.noAlertsSubtext, { color: theme.colors.onSurfaceVariant }]}>Todo funciona correctamente</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.sectionTitle}>Alertas Activas ({activeAlerts.length})</Text>
+      <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Alertas Activas ({activeAlerts.length})</Text>
       <FlatList
         data={activeAlerts}
         keyExtractor={(item) => item.id.toString()}
@@ -71,26 +71,23 @@ const AlertsPanel = ({ alerts, onDismissAlert }) => {
   );
 };
 
-const getStyles = (theme) => StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: theme.text,
     marginBottom: 16,
     paddingHorizontal: 16,
   },
   alertCard: {
-    backgroundColor: theme.surface,
     borderRadius: 8,
     padding: 16,
     marginHorizontal: 16,
     marginBottom: 8,
     borderLeftWidth: 4,
     elevation: 2,
-    // Removed deprecated shadow* properties
   },
   alertHeader: {
     flexDirection: 'row',
@@ -100,13 +97,11 @@ const getStyles = (theme) => StyleSheet.create({
   alertMessage: {
     fontSize: 14,
     fontWeight: '600',
-    color: theme.text,
     flex: 1,
     marginLeft: 8,
   },
   alertTimestamp: {
     fontSize: 12,
-    color: theme.textSecondary,
     marginLeft: 28,
   },
   noAlertsContainer: {
@@ -118,12 +113,10 @@ const getStyles = (theme) => StyleSheet.create({
   noAlertsText: {
     fontSize: 18,
     fontWeight: '600',
-    color: theme.success,
     marginTop: 16,
   },
   noAlertsSubtext: {
     fontSize: 14,
-    color: theme.textSecondary,
     marginTop: 4,
   },
 });

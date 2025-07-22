@@ -7,12 +7,11 @@ import {
   ScrollView 
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColors } from '../contexts/ThemeContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 const DeviceInfoPanel = ({ devices, sensors }) => {
+  const { theme } = useTheme();
   const [isExpanded, setIsExpanded] = useState(false);
-  const theme = useThemeColors();
-  const styles = getStyles(theme);
 
   // Filtrar dispositivos que tienen información real
   const realDevices = Object.entries(devices).filter(([key, device]) => device.realDevice);
@@ -24,13 +23,13 @@ const DeviceInfoPanel = ({ devices, sensors }) => {
 
   if (!isExpanded) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: theme.colors.surface }] }>
         <TouchableOpacity 
           style={styles.toggleButton}
           onPress={() => setIsExpanded(true)}
         >
-          <Ionicons name="information-circle-outline" size={20} color={theme.textSecondary} />
-          <Text style={styles.toggleText}>
+          <Ionicons name="information-circle-outline" size={20} color={theme.colors.onSurfaceVariant} />
+          <Text style={[styles.toggleText, { color: theme.colors.text }] }>
             Información Completa ({realDevices.length} dispositivos reales, {realSensorsCount} sensores reales)
           </Text>
         </TouchableOpacity>
@@ -39,56 +38,52 @@ const DeviceInfoPanel = ({ devices, sensors }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.colors.surface }] }>
       <View style={styles.header}>
-        <Text style={styles.title}>Información Completa de Dispositivos y Sensores</Text>
+        <Text style={[styles.title, { color: theme.colors.text }] }>Información Completa de Dispositivos y Sensores</Text>
         <TouchableOpacity onPress={() => setIsExpanded(false)}>
-          <Ionicons name="close" size={24} color={theme.textSecondary} />
+          <Ionicons name="close" size={24} color={theme.colors.onSurfaceVariant} />
         </TouchableOpacity>
       </View>
-      
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Información de Sensores */}
         {sensors && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              <Ionicons name="analytics" size={16} color={theme.success} /> Sensores Activos
+            <Text style={[styles.sectionTitle, { color: theme.colors.info }] }>
+              <Ionicons name="analytics" size={16} color={theme.colors.info} /> Sensores Activos
             </Text>
             {Object.entries(sensors).map(([key, sensor]) => (
               <View key={key} style={styles.sensorItem}>
                 <View style={styles.sensorHeader}>
-                  <Text style={styles.sensorName}>{sensor.name || key}</Text>
-                  <View style={[styles.statusBadge, { 
-                    backgroundColor: sensor.isReal ? theme.success : theme.inactive
-                  }]}>
-                    <Text style={styles.statusText}>
+                  <Text style={[styles.sensorName, { color: theme.colors.text }]}>{sensor.name || key}</Text>
+                  <View style={[styles.statusBadge, { backgroundColor: sensor.isReal ? theme.colors.success : theme.colors.onSurfaceVariant }] }>
+                    <Text style={[styles.statusText, { color: theme.colors.onSuccess }]}>
                       {sensor.isReal ? 'REAL' : 'SIMULADO'}
                     </Text>
                   </View>
                 </View>
-                
                 <View style={styles.sensorDetails}>
-                  <Text style={styles.detailText}>
-                    <Text style={styles.detailLabel}>Valor actual:</Text> {sensor.current} {sensor.unit}
+                  <Text style={[styles.detailText, { color: theme.colors.onSurfaceVariant }] }>
+                    <Text style={[styles.detailLabel, { color: theme.colors.onSurface }]} >Valor actual:</Text> {sensor.current} {sensor.unit}
                   </Text>
                   {sensor.ideal && (
-                    <Text style={styles.detailText}>
-                      <Text style={styles.detailLabel}>Rango ideal:</Text> {sensor.ideal.min} - {sensor.ideal.max} {sensor.unit}
+                    <Text style={[styles.detailText, { color: theme.colors.onSurfaceVariant }] }>
+                      <Text style={[styles.detailLabel, { color: theme.colors.onSurface }]} >Rango ideal:</Text> {sensor.ideal.min} - {sensor.ideal.max} {sensor.unit}
                     </Text>
                   )}
                   {sensor.sensorId && (
-                    <Text style={styles.detailText}>
-                      <Text style={styles.detailLabel}>ID del sensor:</Text> {sensor.sensorId}
+                    <Text style={[styles.detailText, { color: theme.colors.onSurfaceVariant }] }>
+                      <Text style={[styles.detailLabel, { color: theme.colors.onSurface }]} >ID del sensor:</Text> {sensor.sensorId}
                     </Text>
                   )}
                   {sensor.lastUpdate && (
-                    <Text style={styles.detailText}>
-                      <Text style={styles.detailLabel}>Última lectura:</Text> {new Date(sensor.lastUpdate).toLocaleString('es-ES')}
+                    <Text style={[styles.detailText, { color: theme.colors.onSurfaceVariant }] }>
+                      <Text style={[styles.detailLabel, { color: theme.colors.onSurface }]} >Última lectura:</Text> {new Date(sensor.lastUpdate).toLocaleString('es-ES')}
                     </Text>
                   )}
                   {sensor.history && sensor.history.length > 0 && (
-                    <Text style={styles.detailText}>
-                      <Text style={styles.detailLabel}>Historial:</Text> {sensor.history.slice(-3).join(', ')} {sensor.unit}
+                    <Text style={[styles.detailText, { color: theme.colors.onSurfaceVariant }] }>
+                      <Text style={[styles.detailLabel, { color: theme.colors.onSurface }]} >Historial:</Text> {sensor.history.slice(-3).join(', ')} {sensor.unit}
                     </Text>
                   )}
                 </View>
@@ -101,14 +96,14 @@ const DeviceInfoPanel = ({ devices, sensors }) => {
         {realDevices.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>
-              <Ionicons name="hardware-chip" size={16} color={theme.success} /> Dispositivos Reales
+              <Ionicons name="hardware-chip" size={16} color="#4CAF50" /> Dispositivos Reales
             </Text>
             {realDevices.map(([key, device]) => (
               <View key={key} style={styles.deviceItem}>
                 <View style={styles.deviceHeader}>
                   <Text style={styles.deviceName}>{device.name}</Text>
                   <View style={[styles.statusBadge, { 
-                    backgroundColor: device.isActive || device.isOpen ? theme.success : theme.error
+                    backgroundColor: device.isActive || device.isOpen ? '#4CAF50' : '#F44336' 
                   }]}>
                     <Text style={styles.statusText}>
                       {device.isActive || device.isOpen ? 'ACTIVO' : 'INACTIVO'}
@@ -161,14 +156,14 @@ const DeviceInfoPanel = ({ devices, sensors }) => {
         {/* Dispositivos Simulados */}
         {mockDevices.length > 0 && (
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: theme.warning }]}>
-              <Ionicons name="construct" size={16} color={theme.warning} /> Dispositivos Simulados
+            <Text style={[styles.sectionTitle, { color: '#FF9800' }]}>
+              <Ionicons name="construct" size={16} color="#FF9800" /> Dispositivos Simulados
             </Text>
             {mockDevices.map(([key, device]) => (
-              <View key={key} style={[styles.deviceItem, { borderLeftColor: theme.warning }]}>
+              <View key={key} style={[styles.deviceItem, { borderLeftColor: '#FF9800' }]}>
                 <View style={styles.deviceHeader}>
                   <Text style={styles.deviceName}>{device.name}</Text>
-                  <View style={[styles.statusBadge, { backgroundColor: theme.warning }]}>
+                  <View style={[styles.statusBadge, { backgroundColor: '#FF9800' }]}>
                     <Text style={styles.statusText}>SIMULADO</Text>
                   </View>
                 </View>
@@ -184,9 +179,9 @@ const DeviceInfoPanel = ({ devices, sensors }) => {
   );
 };
 
-const getStyles = (theme) => StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
-    backgroundColor: theme.surface,
+    backgroundColor: '#fff',
     margin: 16,
     borderRadius: 12,
     elevation: 2,
@@ -202,7 +197,7 @@ const getStyles = (theme) => StyleSheet.create({
   toggleText: {
     marginLeft: 8,
     fontSize: 16,
-    color: theme.textSecondary,
+    color: '#666',
   },
   header: {
     flexDirection: 'row',
@@ -210,12 +205,12 @@ const getStyles = (theme) => StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: theme.border,
+    borderBottomColor: '#f0f0f0',
   },
   title: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: theme.text,
+    color: '#333',
   },
   content: {
     maxHeight: 400,
@@ -227,18 +222,18 @@ const getStyles = (theme) => StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: theme.success,
+    color: '#4CAF50',
     marginBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
   },
   deviceItem: {
     borderLeftWidth: 4,
-    borderLeftColor: theme.success,
+    borderLeftColor: '#4CAF50',
     paddingLeft: 12,
     paddingVertical: 8,
     marginBottom: 12,
-    backgroundColor: theme.backgroundSecondary,
+    backgroundColor: '#f9f9f9',
     borderRadius: 8,
   },
   deviceHeader: {
@@ -250,7 +245,7 @@ const getStyles = (theme) => StyleSheet.create({
   deviceName: {
     fontSize: 16,
     fontWeight: '600',
-    color: theme.text,
+    color: '#333',
     flex: 1,
   },
   statusBadge: {
@@ -268,25 +263,25 @@ const getStyles = (theme) => StyleSheet.create({
   },
   detailText: {
     fontSize: 14,
-    color: theme.textSecondary,
+    color: '#666',
     marginBottom: 4,
   },
   detailLabel: {
     fontWeight: '600',
-    color: theme.text,
+    color: '#333',
   },
   simulatedText: {
     fontSize: 14,
-    color: theme.warning,
+    color: '#FF9800',
     fontStyle: 'italic',
   },
   sensorItem: {
-    backgroundColor: theme.backgroundSecondary,
+    backgroundColor: '#f8f9ff',
     padding: 12,
     borderRadius: 8,
     marginBottom: 8,
     borderLeftWidth: 3,
-    borderLeftColor: theme.success,
+    borderLeftColor: '#2196F3',
   },
   sensorHeader: {
     flexDirection: 'row',
@@ -297,7 +292,7 @@ const getStyles = (theme) => StyleSheet.create({
   sensorName: {
     fontSize: 14,
     fontWeight: '600',
-    color: theme.text,
+    color: '#333',
     flex: 1,
   },
   sensorDetails: {

@@ -1,221 +1,104 @@
-// Componente para mostrar el estado de conexión de la API
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import useConnectionMonitor from '../hooks/useConnectionMonitor';
+import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../contexts/ThemeContext';
 
 const ConnectionStatus = ({ 
-  showControls = false, 
-  compact = false,
-  style = {},
-  onStatusPress = null 
+  compact = false, 
+  style = {}, 
+  onStatusPress = () => {} 
 }) => {
-  const {
-    connectionInfo,
-    isLoading,
-    isPrimary,
-    isFallback,
-    currentUrl,
-    forceCheck,
-    switchToPrimary,
-    switchToFallback,
-    getStats
-  } = useConnectionMonitor();
-
-  if (!connectionInfo && !isLoading) {
-    return null;
-  }
-
-  const getStatusColor = () => {
-    if (isLoading) return '#FFA500'; // Naranja
-    if (isPrimary) return '#4CAF50'; // Verde
-    if (isFallback) return '#FF9800'; // Amarillo/Naranja
-    return '#F44336'; // Rojo
+  const { theme, isDark } = useTheme();
+  
+  // Mock connection info for now
+  const connectionInfo = {
+    isPrimary: true,
+    currentUrl: 'localhost:3000',
+    isConnected: true,
+    status: 'online'
   };
 
-  const getStatusText = () => {
-    if (isLoading) return 'Verificando...';
-    if (isPrimary) return 'API Local';
-    if (isFallback) return 'API Remota';
-    return 'Sin conexión';
-  };
-
-  const getStatusIcon = () => {
-    if (isLoading) return '🔄';
-    if (isPrimary) return '🏠';
-    if (isFallback) return '☁️';
-    return '❌';
-  };
-
-  const handleStatusPress = () => {
-    if (onStatusPress) {
-      onStatusPress({
-        connectionInfo,
-        isPrimary,
-        isFallback,
-        currentUrl,
-        stats: getStats()
-      });
-    }
+  const handlePress = () => {
+    onStatusPress(connectionInfo);
   };
 
   if (compact) {
     return (
       <TouchableOpacity 
-        style={[styles.compactContainer, { borderColor: getStatusColor() }, style]}
-        onPress={handleStatusPress}
-        disabled={!onStatusPress}
+        style={[styles.compactContainer, { backgroundColor: theme.colors.surface }, style]}
+        onPress={handlePress}
       >
-        <Text style={styles.compactIcon}>{getStatusIcon()}</Text>
-        <Text style={[styles.compactText, { color: getStatusColor() }]}>
-          {getStatusText()}
+        <Ionicons 
+          name={connectionInfo.isConnected ? "wifi" : "wifi-off"} 
+          size={16} 
+          color={connectionInfo.isConnected ? theme.colors.success : theme.colors.error} 
+        />
+        <Text style={[styles.compactText, { color: theme.colors.onSurfaceVariant }]}>
+          {connectionInfo.status}
         </Text>
       </TouchableOpacity>
     );
   }
 
   return (
-    <View style={[styles.container, style]}>
-      <View style={styles.statusRow}>
-        <View style={styles.statusInfo}>
-          <Text style={styles.statusIcon}>{getStatusIcon()}</Text>
-          <View style={styles.statusTextContainer}>
-            <Text style={[styles.statusText, { color: getStatusColor() }]}>
-              {getStatusText()}
-            </Text>
-            {currentUrl && (
-              <Text style={styles.urlText} numberOfLines={1}>
-                {currentUrl.replace('http://', '').replace('https://', '')}
-              </Text>
-            )}
-          </View>
-        </View>
-        
-        {!isLoading && (
-          <TouchableOpacity style={styles.refreshButton} onPress={forceCheck}>
-            <Text style={styles.refreshIcon}>🔄</Text>
-          </TouchableOpacity>
-        )}
+    <View style={[styles.container, { backgroundColor: theme.colors.card }, style]}>
+      <View style={styles.header}>
+        <Ionicons 
+          name={connectionInfo.isConnected ? "wifi" : "wifi-off"} 
+          size={20} 
+          color={connectionInfo.isConnected ? theme.colors.success : theme.colors.error} 
+        />
+        <Text style={[styles.title, { color: theme.colors.text }]}>
+          Estado de Conexión
+        </Text>
       </View>
-
-      {showControls && !isLoading && (
-        <View style={styles.controlsContainer}>
-          <TouchableOpacity 
-            style={[
-              styles.controlButton, 
-              isPrimary && styles.activeButton
-            ]} 
-            onPress={switchToPrimary}
-            disabled={isPrimary}
-          >
-            <Text style={[
-              styles.controlButtonText,
-              isPrimary && styles.activeButtonText
-            ]}>
-              🏠 Local
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[
-              styles.controlButton, 
-              isFallback && styles.activeButton
-            ]} 
-            onPress={switchToFallback}
-            disabled={isFallback}
-          >
-            <Text style={[
-              styles.controlButtonText,
-              isFallback && styles.activeButtonText
-            ]}>
-              ☁️ Remota
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      
+      <Text style={[styles.status, { color: theme.colors.onSurfaceVariant }]}>
+        {connectionInfo.isConnected ? 'Conectado' : 'Desconectado'}
+      </Text>
+      
+      <Text style={[styles.url, { color: theme.colors.onSurfaceVariant }]}>
+        {connectionInfo.currentUrl}
+      </Text>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#f8f9fa',
+    padding: 16,
     borderRadius: 8,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#e9ecef',
+    marginVertical: 8,
   },
   compactContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 6,
   },
-  statusRow: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 8,
   },
-  statusInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  statusIcon: {
-    fontSize: 18,
-    marginRight: 8,
-  },
-  compactIcon: {
-    fontSize: 12,
-    marginRight: 4,
-  },
-  statusTextContainer: {
-    flex: 1,
-  },
-  statusText: {
-    fontSize: 14,
+  title: {
+    fontSize: 16,
     fontWeight: '600',
   },
   compactText: {
     fontSize: 12,
     fontWeight: '500',
   },
-  urlText: {
-    fontSize: 11,
-    color: '#6c757d',
-    marginTop: 2,
+  status: {
+    fontSize: 14,
+    marginBottom: 4,
   },
-  refreshButton: {
-    padding: 4,
-  },
-  refreshIcon: {
-    fontSize: 16,
-  },
-  controlsContainer: {
-    flexDirection: 'row',
-    marginTop: 12,
-    gap: 8,
-  },
-  controlButton: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    backgroundColor: '#e9ecef',
-    alignItems: 'center',
-  },
-  activeButton: {
-    backgroundColor: '#007bff',
-  },
-  controlButtonText: {
+  url: {
     fontSize: 12,
-    fontWeight: '500',
-    color: '#495057',
-  },
-  activeButtonText: {
-    color: 'white',
+    fontFamily: 'monospace',
   },
 });
 

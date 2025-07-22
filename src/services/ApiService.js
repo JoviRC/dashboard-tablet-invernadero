@@ -2,149 +2,14 @@
 import CONFIG from '../config/config';
 import { sensorData as fallbackSensorData, deviceStates as fallbackDeviceStates } from '../data/mockData';
 
-// Variable para rastrear la URL activa
-let currentApiUrl = CONFIG.API_URLS?.PRIMARY || CONFIG.API_BASE_URL;
+const API_BASE_URL = CONFIG.API_BASE_URL;
 
 const apiService = {
-  // Función para probar conectividad con una URL
-  async testApiConnection(url, timeout = 5000) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-      
-      const response = await fetch(`${url}/ControllerDHT11/GetDispositivosForUser?user=1`, {
-        method: 'GET',
-        headers: {
-          'accept': '*/*',
-          'Content-Type': 'application/json',
-        },
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      return response.ok;
-    } catch (error) {
-      console.log(`Conexión fallida con ${url}:`, error.message);
-      return false;
-    }
-  },
-
-  // Función para obtener la URL de API activa con fallback automático
-  async getActiveApiUrl() {
-    // Si la URL actual es la primaria, probar conectividad
-    if (currentApiUrl === CONFIG.API_URLS?.PRIMARY) {
-      const isPrimaryWorking = await this.testApiConnection(CONFIG.API_URLS.PRIMARY);
-      
-      if (!isPrimaryWorking && CONFIG.API_URLS?.FALLBACK) {
-        console.log('🔄 API primaria no responde, cambiando a URL de respaldo...');
-        currentApiUrl = CONFIG.API_URLS.FALLBACK;
-        
-        // Probar también la URL de respaldo
-        const isFallbackWorking = await this.testApiConnection(CONFIG.API_URLS.FALLBACK);
-        if (!isFallbackWorking) {
-          console.warn('⚠️ Ni la API primaria ni la de respaldo responden');
-        } else {
-          console.log('✅ Conectado exitosamente a la API de respaldo');
-        }
-      }
-    }
-    
-    return currentApiUrl;
-  },
-
-  // Función para realizar fetch con fallback automático
-  async fetchWithFallback(endpoint, options = {}) {
-    const activeUrl = await this.getActiveApiUrl();
-    
-    try {
-      const response = await fetch(`${activeUrl}${endpoint}`, {
-        timeout: 10000, // 10 segundos de timeout
-        ...options
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Error HTTP: ${response.status}`);
-      }
-      
-      return response;
-    } catch (error) {
-      // Si falla con la URL actual y es la primaria, intentar con fallback
-      if (activeUrl === CONFIG.API_URLS?.PRIMARY && CONFIG.API_URLS?.FALLBACK) {
-        console.log('🔄 Error con API primaria, intentando con fallback...');
-        currentApiUrl = CONFIG.API_URLS.FALLBACK;
-        
-        try {
-          const fallbackResponse = await fetch(`${CONFIG.API_URLS.FALLBACK}${endpoint}`, {
-            timeout: 10000,
-            ...options
-          });
-          
-          if (!fallbackResponse.ok) {
-            throw new Error(`Error HTTP en fallback: ${fallbackResponse.status}`);
-          }
-          
-          console.log('✅ Conectado exitosamente a la API de respaldo');
-          return fallbackResponse;
-        } catch (fallbackError) {
-          console.error('❌ Error también en API de respaldo:', fallbackError);
-          throw fallbackError;
-        }
-      }
-      
-      throw error;
-    }
-  },
-
-  // Función para obtener información sobre la conexión actual
-  getCurrentApiInfo() {
-    return {
-      currentUrl: currentApiUrl,
-      isPrimary: currentApiUrl === CONFIG.API_URLS?.PRIMARY,
-      isFallback: currentApiUrl === CONFIG.API_URLS?.FALLBACK,
-      primaryUrl: CONFIG.API_URLS?.PRIMARY,
-      fallbackUrl: CONFIG.API_URLS?.FALLBACK
-    };
-  },
-
-  // Función para reintentar conexión con URL primaria
-  async retryPrimaryConnection() {
-    if (CONFIG.API_URLS?.PRIMARY && currentApiUrl !== CONFIG.API_URLS.PRIMARY) {
-      console.log('🔄 Intentando reconectar con API primaria...');
-      const isPrimaryWorking = await this.testApiConnection(CONFIG.API_URLS.PRIMARY);
-      
-      if (isPrimaryWorking) {
-        console.log('✅ Reconectado exitosamente a la API primaria');
-        currentApiUrl = CONFIG.API_URLS.PRIMARY;
-        return true;
-      } else {
-        console.log('❌ API primaria aún no disponible');
-        return false;
-      }
-    }
-    return currentApiUrl === CONFIG.API_URLS?.PRIMARY;
-  },
-
-  // Función para forzar el cambio a una URL específica
-  forceApiUrl(url) {
-    if (url === 'primary' && CONFIG.API_URLS?.PRIMARY) {
-      currentApiUrl = CONFIG.API_URLS.PRIMARY;
-      console.log('🔄 Forzado cambio a API primaria');
-    } else if (url === 'fallback' && CONFIG.API_URLS?.FALLBACK) {
-      currentApiUrl = CONFIG.API_URLS.FALLBACK;
-      console.log('🔄 Forzado cambio a API de respaldo');
-    } else if (typeof url === 'string' && url.startsWith('http')) {
-      currentApiUrl = url;
-      console.log(`🔄 Forzado cambio a URL personalizada: ${url}`);
-    } else {
-      console.warn('⚠️ URL no válida para forzar cambio');
-    }
-  },
-
   // Obtener dispositivos del usuario
   async getDispositivosForUser(userId = 1) {
     try {
-      const response = await this.fetchWithFallback(
-        `/ControllerDHT11/GetDispositivosForUser?user=${userId}`,
+      const response = await fetch(
+        `${API_BASE_URL}/ControllerDHT11/GetDispositivosForUser?user=${userId}`,
         {
           method: 'GET',
           headers: {
@@ -153,6 +18,10 @@ const apiService = {
           },
         }
       );
+
+      if (!response.ok) {
+        throw new Error(`Error HTTP: ${response.status}`);
+      }
 
       const data = await response.json();
       console.log('Datos recibidos de la API:', data);
@@ -166,8 +35,8 @@ const apiService = {
   // Obtener datos específicos de un sensor por ID
   async getSensorData(sensorId, segundos = 1) {
     try {
-      const response = await this.fetchWithFallback(
-        `/ControllerDHT11/GetTemperaturaSegundos?segundos=${segundos}&idSensor=${sensorId}`,
+      const response = await fetch(
+        `${API_BASE_URL}/ControllerDHT11/GetTemperaturaSegundos?segundos=${segundos}&idSensor=${sensorId}`,
         {
           method: 'GET',
           headers: {
@@ -343,8 +212,8 @@ const apiService = {
     try {
       // Aquí necesitarías el endpoint específico para controlar switches
       // Por ahora simulo la estructura, deberás ajustar según tu API
-      const response = await this.fetchWithFallback(
-        `/ControllerSwitch/SetSwitch?id=${switchId}&estado=${newState ? 1 : 0}`,
+      const response = await fetch(
+        `${API_BASE_URL}/ControllerSwitch/SetSwitch?id=${switchId}&estado=${newState ? 1 : 0}`,
         {
           method: 'POST', // o PUT según tu API
           headers: {
@@ -353,6 +222,10 @@ const apiService = {
           },
         }
       );
+
+      if (!response.ok) {
+        throw new Error(`Error HTTP: ${response.status}`);
+      }
 
       const data = await response.json();
       console.log(`Switch ${switchId} controlado. Nuevo estado: ${newState}`, data);
@@ -995,6 +868,24 @@ const apiService = {
 
     console.log('Alertas generadas:', alerts);
     return alerts;
+  },
+
+  // Obtener información actual de la API
+  getCurrentApiInfo() {
+    return {
+      isConnected: this.isConnected,
+      lastUpdate: this.lastUpdate,
+      currentMode: this.usingFallback ? 'fallback' : 'api',
+      baseUrl: this.API_BASE_URL,
+      endpoints: {
+        devices: `${this.API_BASE_URL}/api/device`,
+        sensors: `${this.API_BASE_URL}/api/sensor`,
+        switches: `${this.API_BASE_URL}/api/switch`
+      },
+      status: this.isConnected ? 'online' : 'offline',
+      connectionAttempts: this.connectionAttempts || 0,
+      lastError: this.lastError || null
+    };
   }
 };
 

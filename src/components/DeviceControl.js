@@ -1,8 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Switch } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColors } from '../contexts/ThemeContext';
-import { ColorHelpers } from '../config/colors';
+import { useTheme } from '../contexts/ThemeContext';
 
 const DeviceControl = ({ 
   title, 
@@ -14,54 +13,44 @@ const DeviceControl = ({
   additionalInfo,
   showControls = true 
 }) => {
-  const theme = useThemeColors();
-  const styles = getStyles(theme);
-  
+  const { theme } = useTheme();
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, { backgroundColor: theme.colors.surface }] }>
       <View style={styles.header}>
         <View style={styles.titleContainer}>
           <Ionicons 
             name={icon} 
             size={24} 
-            color={isActive ? theme.success : theme.textSecondary} 
+            color={isActive ? theme.colors.success : theme.colors.border} 
           />
-          <Text style={styles.title}>{title}</Text>
+          <Text style={[styles.title, { color: theme.colors.text }]}>{title}</Text>
         </View>
-        
         {showControls && (
           <Switch
             value={isActive}
             onValueChange={onToggle}
-            trackColor={{ false: '#E0E0E0', true: '#C8E6C9' }}
-            thumbColor={isActive ? '#4CAF50' : '#9E9E9E'}
+            trackColor={{ false: theme.colors.disabled, true: theme.colors.successBackground }}
+            thumbColor={isActive ? theme.colors.success : theme.colors.border}
           />
         )}
       </View>
-      
       {additionalInfo && (
-        <Text style={styles.info}>{additionalInfo}</Text>
+        <Text style={[styles.info, { color: theme.colors.onSurfaceVariant }]}>{additionalInfo}</Text>
       )}
-      
       {showControls && (
         <View style={styles.automaticContainer}>
-          <Text style={styles.automaticLabel}>Automático</Text>
+          <Text style={[styles.automaticLabel, { color: theme.colors.onSurfaceVariant }]}>Automático</Text>
           <Switch
             value={isAutomatic}
             onValueChange={onAutomaticToggle}
-            trackColor={{ false: theme.inactive, true: ColorHelpers.withOpacity(theme.success, 0.3) }}
-            thumbColor={isAutomatic ? theme.success : theme.disabled}
+            trackColor={{ false: theme.colors.disabled, true: theme.colors.infoBackground }}
+            thumbColor={isAutomatic ? theme.colors.info : theme.colors.border}
             style={styles.automaticSwitch}
           />
         </View>
       )}
-      
-      <View style={[styles.statusIndicator, { 
-        backgroundColor: isActive ? theme.active : theme.inactive 
-      }]}>
-        <Text style={[styles.statusText, { 
-          color: isActive ? theme.textOnDark : theme.textSecondary 
-        }]}>
+      <View style={[styles.statusIndicator, { backgroundColor: isActive ? theme.colors.success : theme.colors.disabled }] }>
+        <Text style={[styles.statusText, { color: isActive ? theme.colors.onSuccess : theme.colors.onSurfaceVariant }] }>
           {isActive ? 'ACTIVO' : 'INACTIVO'}
         </Text>
       </View>
@@ -69,14 +58,12 @@ const DeviceControl = ({
   );
 };
 
-const getStyles = (theme) => StyleSheet.create({
+const styles = StyleSheet.create({
   card: {
-    backgroundColor: theme.surface,
     borderRadius: 12,
     padding: 16,
     margin: 8,
     elevation: 3,
-    // Removed deprecated shadow* properties
     minWidth: 160,
     flex: 1,
   },
@@ -95,12 +82,10 @@ const getStyles = (theme) => StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginLeft: 8,
-    color: theme.text,
     flex: 1,
   },
   info: {
     fontSize: 12,
-    color: theme.textSecondary,
     marginBottom: 12,
     lineHeight: 16,
   },
@@ -112,7 +97,7 @@ const getStyles = (theme) => StyleSheet.create({
   },
   automaticLabel: {
     fontSize: 12,
-    color: theme.textSecondary,
+    color: '#666',
   },
   automaticSwitch: {
     transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }],

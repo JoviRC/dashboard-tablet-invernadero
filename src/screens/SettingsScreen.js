@@ -12,8 +12,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { sensorData, schedules } from '../data/mockData';
+import { useTheme } from '../contexts/ThemeContext';
 
 const SettingsScreen = () => {
+  const { theme } = useTheme();
+  
   const [sensorRanges, setSensorRanges] = useState(
     Object.fromEntries(
       Object.entries(sensorData).map(([key, data]) => [
@@ -103,6 +106,8 @@ const SettingsScreen = () => {
     );
   };
 
+  const styles = createStyles(theme);
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView}>
@@ -155,7 +160,7 @@ const SettingsScreen = () => {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Horarios de Riego</Text>
             <TouchableOpacity onPress={addIrrigationTime} style={styles.addButton}>
-              <Ionicons name="add" size={20} color="#fff" />
+              <Ionicons name="add" size={20} color={theme.colors.onPrimary} />
             </TouchableOpacity>
           </View>
           
@@ -168,7 +173,7 @@ const SettingsScreen = () => {
                     onPress={() => removeIrrigationTime(index)}
                     style={styles.removeButton}
                   >
-                    <Ionicons name="trash-outline" size={16} color="#F44336" />
+                    <Ionicons name="trash-outline" size={16} color={theme.colors.error} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -198,8 +203,8 @@ const SettingsScreen = () => {
                   <Switch
                     value={schedule.active}
                     onValueChange={(value) => handleIrrigationChange(index, 'active', value)}
-                    trackColor={{ false: '#E0E0E0', true: '#C8E6C9' }}
-                    thumbColor={schedule.active ? '#4CAF50' : '#9E9E9E'}
+                    trackColor={{ false: theme.colors.surfaceVariant, true: theme.colors.primaryContainer }}
+                    thumbColor={schedule.active ? theme.colors.primary : theme.colors.outline}
                   />
                 </View>
               </View>
@@ -235,8 +240,8 @@ const SettingsScreen = () => {
                 <Switch
                   value={lightingSchedule.active}
                   onValueChange={(value) => setLightingSchedule(prev => ({...prev, active: value}))}
-                  trackColor={{ false: '#E0E0E0', true: '#C8E6C9' }}
-                  thumbColor={lightingSchedule.active ? '#4CAF50' : '#9E9E9E'}
+                  trackColor={{ false: theme.colors.surfaceVariant, true: theme.colors.primaryContainer }}
+                  thumbColor={lightingSchedule.active ? theme.colors.primary : theme.colors.outline}
                 />
               </View>
             </View>
@@ -261,8 +266,8 @@ const SettingsScreen = () => {
                   <Switch
                     value={value}
                     onValueChange={(newValue) => setNotifications(prev => ({...prev, [key]: newValue}))}
-                    trackColor={{ false: '#E0E0E0', true: '#C8E6C9' }}
-                    thumbColor={value ? '#4CAF50' : '#9E9E9E'}
+                    trackColor={{ false: theme.colors.surfaceVariant, true: theme.colors.primaryContainer }}
+                    thumbColor={value ? theme.colors.primary : theme.colors.outline}
                   />
                 </View>
               );
@@ -273,7 +278,7 @@ const SettingsScreen = () => {
         {/* Botón Guardar */}
         <View style={styles.saveContainer}>
           <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-            <Ionicons name="save-outline" size={20} color="#fff" />
+            <Ionicons name="save-outline" size={20} color={theme.colors.onPrimary} />
             <Text style={styles.saveButtonText}>Guardar Configuración</Text>
           </TouchableOpacity>
         </View>
@@ -282,33 +287,33 @@ const SettingsScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.background,
   },
   scrollView: {
     flex: 1,
   },
   header: {
     padding: 20,
-    backgroundColor: '#fff',
+    backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: theme.colors.outline,
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
+    color: theme.colors.onSurface,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#666',
+    color: theme.colors.onSurfaceVariant,
     marginTop: 4,
   },
   section: {
     marginTop: 8,
-    backgroundColor: '#fff',
+    backgroundColor: theme.colors.surface,
     padding: 16,
   },
   sectionHeader: {
@@ -320,11 +325,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: theme.colors.onSurface,
     marginBottom: 16,
   },
   addButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: theme.colors.primary,
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -332,7 +337,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sensorRangeCard: {
-    backgroundColor: '#f9f9f9',
+    backgroundColor: theme.colors.surfaceVariant,
     padding: 16,
     borderRadius: 8,
     marginBottom: 12,
@@ -340,7 +345,7 @@ const styles = StyleSheet.create({
   sensorName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: theme.colors.onSurface,
     marginBottom: 12,
   },
   rangeInputs: {
@@ -354,43 +359,46 @@ const styles = StyleSheet.create({
   },
   inputLabel: {
     fontSize: 12,
-    color: '#666',
+    color: theme.colors.onSurfaceVariant,
     marginBottom: 4,
   },
   rangeInput: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: theme.colors.outline,
     borderRadius: 6,
     padding: 8,
     textAlign: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: theme.colors.surface,
     minWidth: 60,
+    color: theme.colors.onSurface,
   },
   timeInput: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: theme.colors.outline,
     borderRadius: 6,
     padding: 8,
     textAlign: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: theme.colors.surface,
     minWidth: 70,
+    color: theme.colors.onSurface,
   },
   durationInput: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: theme.colors.outline,
     borderRadius: 6,
     padding: 8,
     textAlign: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: theme.colors.surface,
     minWidth: 50,
+    color: theme.colors.onSurface,
   },
   unitText: {
     fontSize: 12,
-    color: '#666',
+    color: theme.colors.onSurfaceVariant,
     marginTop: 4,
   },
   scheduleCard: {
-    backgroundColor: '#f9f9f9',
+    backgroundColor: theme.colors.surfaceVariant,
     padding: 16,
     borderRadius: 8,
     marginBottom: 12,
@@ -404,7 +412,7 @@ const styles = StyleSheet.create({
   scheduleIndex: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: theme.colors.onSurface,
   },
   removeButton: {
     padding: 4,
@@ -415,7 +423,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   lightingCard: {
-    backgroundColor: '#f9f9f9',
+    backgroundColor: theme.colors.surfaceVariant,
     padding: 16,
     borderRadius: 8,
   },
@@ -425,7 +433,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   notificationsCard: {
-    backgroundColor: '#f9f9f9',
+    backgroundColor: theme.colors.surfaceVariant,
     padding: 16,
     borderRadius: 8,
   },
@@ -435,11 +443,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: theme.colors.outline,
   },
   notificationLabel: {
     fontSize: 16,
-    color: '#333',
+    color: theme.colors.onSurface,
     flex: 1,
   },
   saveContainer: {
@@ -447,7 +455,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   saveButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: theme.colors.primary,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
@@ -455,7 +463,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   saveButtonText: {
-    color: '#fff',
+    color: theme.colors.onPrimary,
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,

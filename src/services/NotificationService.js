@@ -2,19 +2,15 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import Colors from '../config/colors';
 
 // Configurar cómo se muestran las notificaciones cuando la app está activa
-// Solo configurar en plataformas nativas (no web)
-if (Platform.OS !== 'web') {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
-  });
-}
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 class NotificationService {
   constructor() {
@@ -25,12 +21,6 @@ class NotificationService {
 
   // Registrar para notificaciones push
   async registerForPushNotificationsAsync() {
-    // Deshabilitar notificaciones push en web
-    if (Platform.OS === 'web') {
-      console.log('Notificaciones push no soportadas en web');
-      return null;
-    }
-
     let token;
 
     if (Platform.OS === 'android') {
@@ -57,16 +47,33 @@ class NotificationService {
       }
       
       try {
-        // Obtener el token de push
-        token = (await Notifications.getExpoPushTokenAsync({
-          projectId: Constants.expoConfig?.extra?.eas?.projectId || 'dashboard-invernadero',
-        })).data;
+        // Obtener el token de push con configuración para web
+        const projectId = Constants.expoConfig?.extra?.eas?.projectId || 
+                         Constants.expoConfig?.extra?.applicationId || 
+                         'com.dashboardtablet.invernadero';
+        
+        const pushTokenConfig = {
+          projectId: projectId,
+        };
+        
+        // En web, agregar applicationId si está disponible
+        if (Platform.OS === 'web') {
+          const applicationId = Constants.expoConfig?.extra?.applicationId || 
+                               Constants.expoConfig?.android?.package || 
+                               Constants.expoConfig?.ios?.bundleIdentifier;
+          if (applicationId) {
+            pushTokenConfig.applicationId = applicationId;
+          }
+        }
+        
+        token = (await Notifications.getExpoPushTokenAsync(pushTokenConfig)).data;
         
         console.log('Expo Push Token:', token);
       } catch (error) {
         console.warn('Error getting push token:', error);
         // En web, las notificaciones pueden funcionar sin token push
         if (Platform.OS === 'web') {
+          console.log('Web notifications will work with local notifications only');
           return 'web-notifications-enabled';
         }
       }
@@ -84,12 +91,6 @@ class NotificationService {
 
   // Configurar listeners de notificaciones
   setupNotificationListeners(onNotificationReceived, onNotificationResponse) {
-    // Solo configurar listeners en plataformas nativas
-    if (Platform.OS === 'web') {
-      console.log('📱 Listeners de notificaciones no disponibles en web');
-      return;
-    }
-
     // Listener para notificaciones recibidas mientras la app está activa
     this.notificationListener = Notifications.addNotificationReceivedListener(onNotificationReceived);
 
@@ -99,11 +100,6 @@ class NotificationService {
 
   // Limpiar listeners
   cleanup() {
-    if (Platform.OS === 'web') {
-      console.log('📱 Limpieza de listeners no necesaria en web');
-      return;
-    }
-
     if (this.notificationListener) {
       this.notificationListener.remove();
     }
@@ -114,23 +110,44 @@ class NotificationService {
 
   // Enviar notificación local inmediata
   async sendLocalNotification(title, body, data = {}) {
-    // Deshabilitar notificaciones locales en web
-    if (Platform.OS === 'web') {
-      console.log(`📢 Notificación (web): ${title} - ${body}`);
-      return;
+    try {
+      // En web, usar la API nativa de notificaciones si está disponible
+      if (Platform.OS === 'web' && 'Notification' in window) {
+        if (Notification.permission === 'granted') {
+          new Notification(title, {
+            body: body,
+            icon: '/favicon.png',
+            badge: '/favicon.png',
+            data: data
+          });
+          return;
+        }
+      }
+      
+      // Para plataformas nativas o web con expo-notifications
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: title,
+          body: body,
+          data: data,
+          sound: 'default',
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+          color: this.getNotificationColor(data.alertType),
+        },
+        trigger: null, // Inmediata
+      });
+    } catch (error) {
+      console.warn('Error sending notification:', error);
+      // En web, intentar notificación del navegador como fallback
+      if (Platform.OS === 'web' && 'Notification' in window) {
+        if (Notification.permission === 'default') {
+          const permission = await Notification.requestPermission();
+          if (permission === 'granted') {
+            new Notification(title, { body: body, icon: '/favicon.png' });
+          }
+        }
+      }
     }
-
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: title,
-        body: body,
-        data: data,
-        sound: 'default',
-        priority: Notifications.AndroidNotificationPriority.HIGH,
-        color: this.getNotificationColor(data.alertType),
-      },
-      trigger: null, // Inmediata
-    });
   }
 
   // Enviar notificación de alerta
@@ -192,7 +209,12 @@ class NotificationService {
 
   // Obtener el color de la notificación según el tipo
   getNotificationColor(alertType) {
-    return Colors.getAlertColor(alertType);
+    switch (alertType) {
+      case 'critical': return '#F44336';
+      case 'warning': return '#FF9800';
+      case 'info': return '#2196F3';
+      default: return '#FF9800';
+    }
   }
 
   // Obtener el título según el tipo de alerta
@@ -217,12 +239,6 @@ class NotificationService {
 
   // Programar notificaciones periódicas de resumen
   async schedulePeriodicSummary() {
-    // Deshabilitar notificaciones programadas en web
-    if (Platform.OS === 'web') {
-      console.log('📊 Notificaciones programadas no soportadas en web');
-      return;
-    }
-
     await Notifications.scheduleNotificationAsync({
       content: {
         title: '📊 Resumen del Invernadero',

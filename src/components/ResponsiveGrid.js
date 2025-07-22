@@ -5,8 +5,10 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 const ResponsiveGrid = ({ children, spacing = 12, style }) => {
   const { gridColumns, cardWidth, isTablet } = useResponsiveLayout();
 
+  const { theme } = useTheme ? useTheme() : { theme: { colors: { surface: '#fff' } } };
   const gridStyle = {
     ...styles.container,
+    backgroundColor: theme.colors.surface,
     ...style
   };
 

@@ -1,12 +1,6 @@
 // Configuración de la aplicación
 export const CONFIG = {
-  // URLs de la API
-  API_URLS: {
-    PRIMARY: 'http://192.168.100.17:4201',
-    FALLBACK: 'http://autoindoor.duckdns.org:4201'
-  },
-  
-  // URL base de la API (mantenida para compatibilidad)
+  // URL base de la API
   API_BASE_URL: 'http://192.168.100.17:4201',
   
   // ID del usuario por defecto para pruebas
@@ -58,17 +52,7 @@ export const CONFIG = {
     NAME: 'Dashboard Invernadero',
     VERSION: '1.0.0',
     ORIENTATION: 'landscape',
-  },
-
-  // Configuración de temas
-  THEMES: {
-    LIGHT: 'light',
-    DARK: 'dark',
-    AUTO: 'auto'
-  },
-
-  // Configuración por defecto del tema
-  DEFAULT_THEME: 'auto'
+  }
 };
 
 export default CONFIG;

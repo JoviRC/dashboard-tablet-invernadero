@@ -48,7 +48,8 @@
     "extra": {
       "eas": {
         "projectId": "dashboard-invernadero"
-      }
+      },
+      "applicationId": "com.dashboardtablet.invernadero"
     }
   }
 }

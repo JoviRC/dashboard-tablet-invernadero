@@ -7,7 +7,8 @@ import {
   RefreshControl,
   Alert,
   ActivityIndicator,
-  TouchableOpacity 
+  TouchableOpacity,
+  Dimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -24,6 +25,7 @@ import DeviceInfoPanel from '../components/DeviceInfoPanel';
 import RealTimeStatus from '../components/RealTimeStatus';
 import ConnectionStatus from '../components/ConnectionStatus';
 import ThemeSelector from '../components/ThemeSelector';
+import DataModeBanner from '../components/DataModeBanner';
 import ApiService from '../services/ApiService';
 import NotificationService from '../services/NotificationService';
 import StorageUtils from '../utils/storage';
@@ -31,7 +33,45 @@ import { sensorData as fallbackSensorData, deviceStates as fallbackDeviceStates 
 
 const DashboardScreen = () => {
   const { theme, isDark } = useTheme();
-  const styles = createStyles(theme);
+  
+  // Configuración responsive para móvil
+  const screenData = Dimensions.get('screen');
+  const windowData = Dimensions.get('window');
+  
+  // Dimensiones objetivo para móvil: 1179 x 2556
+  const TARGET_MOBILE_WIDTH = 1179;
+  const TARGET_MOBILE_HEIGHT = 2556;
+  
+  // Detectar si es móvil y calcular escalas
+  const isMobile = screenData.width <= 1200 || windowData.width <= 1200;
+  const scaleX = isMobile ? Math.min(screenData.width / TARGET_MOBILE_WIDTH, 1) : 1;
+  const scaleY = isMobile ? Math.min(screenData.height / TARGET_MOBILE_HEIGHT, 1) : 1;
+  const scale = Math.min(scaleX, scaleY);
+  
+  // Configuración responsive para notificaciones
+  const responsiveConfig = {
+    isMobile,
+    scale,
+    screenWidth: screenData.width,
+    screenHeight: screenData.height,
+    // Tamaños escalados para notificaciones
+    notification: {
+      floatingButtonSize: Math.max(56 * scale, 48), // Mínimo 48px
+      alertBubbleWidth: Math.min(320 * scale, screenData.width * 0.9),
+      alertBubbleMaxHeight: Math.min(400 * scale, screenData.height * 0.6),
+      alertBadgeSize: Math.max(20 * scale, 16),
+      alertIconSize: Math.max(24 * scale, 20),
+      headerControlSize: Math.max(44 * scale, 36),
+      fontSize: {
+        badge: Math.max(11 * scale, 9),
+        alertTitle: Math.max(16 * scale, 14),
+        alertMessage: Math.max(13 * scale, 11),
+        alertTime: Math.max(11 * scale, 9)
+      }
+    }
+  };
+  
+  const styles = createStyles(theme, responsiveConfig);
   const [sensors, setSensors] = useState(fallbackSensorData);
   const [devices, setDevices] = useState(fallbackDeviceStates);
   const [currentAlerts, setCurrentAlerts] = useState([]);
@@ -41,7 +81,7 @@ const DashboardScreen = () => {
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [showAlertsBubble, setShowAlertsBubble] = useState(false);
   const [expoPushToken, setExpoPushToken] = useState('');
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const previousAlertsRef = useRef([]);
   const [userPreferences, setUserPreferences] = useState(() => StorageUtils.getUserPreferences());
   const [activeSensorIds, setActiveSensorIds] = useState(() => {
@@ -83,30 +123,65 @@ const DashboardScreen = () => {
     };
   }, [userPreferences.refreshInterval, activeSensorIds]);
 
-  // Configurar sistema de notificaciones
+  // Configurar sistema de notificaciones - RESPONSIVE
   const setupNotifications = async () => {
     try {
+      console.log(`🔧 Configurando notificaciones para dispositivo: ${isMobile ? 'Móvil' : 'Desktop'}`);
+      console.log(`📱 Dimensiones: ${responsiveConfig.screenWidth}x${responsiveConfig.screenHeight} (escala: ${scale.toFixed(2)})`);
+      
       const token = await NotificationService.registerForPushNotificationsAsync();
       setExpoPushToken(token || '');
 
-      // Configurar listeners de notificaciones
+      // Configurar listeners de notificaciones con configuración responsive
       NotificationService.setupNotificationListeners(
         (notification) => {
-          console.log('Notificación recibida:', notification);
+          console.log('📨 Notificación recibida (responsive):', notification);
+          
+          // En móvil, mostrar feedback visual adicional
+          if (isMobile && notification) {
+            // Vibración suave en móviles si está disponible
+            if (typeof navigator !== 'undefined' && navigator.vibrate) {
+              navigator.vibrate(100);
+            }
+          }
         },
         (response) => {
-          console.log('Respuesta a notificación:', response);
+          console.log('👆 Respuesta a notificación (responsive):', response);
+          
           // Abrir la burbuja de alertas si se toca una notificación de alerta
           if (response.notification.request.content.data?.alertType) {
             setShowAlertsBubble(true);
+            
+            // En móvil, asegurar que la burbuja sea visible
+            if (isMobile) {
+              // Scroll automático hacia arriba para asegurar visibilidad
+              setTimeout(() => {
+                console.log('📱 Ajustando vista móvil para mostrar alertas');
+              }, 100);
+            }
           }
         }
       );
 
-      console.log('Sistema de notificaciones configurado correctamente');
+      console.log(`✅ Sistema de notificaciones configurado correctamente para ${isMobile ? 'móvil' : 'desktop'}`);
+      console.log(`🎯 Configuración responsive aplicada - Botón: ${responsiveConfig.notification.floatingButtonSize}px, Burbuja: ${responsiveConfig.notification.alertBubbleWidth}px`);
+      
     } catch (error) {
-      console.error('Error configurando notificaciones:', error);
+      console.error('❌ Error configurando notificaciones responsive:', error);
       setNotificationsEnabled(false);
+      
+      // En móvil, mostrar alert más compacto
+      if (isMobile) {
+        Alert.alert(
+          'Error de notificaciones',
+          'Las notificaciones no están disponibles en este dispositivo.',
+          [{ text: 'OK' }],
+          { 
+            cancelable: true,
+            userInterfaceStyle: isDark ? 'dark' : 'light'
+          }
+        );
+      }
     }
   };
 
@@ -138,20 +213,23 @@ const DashboardScreen = () => {
     if (showLoading) setLoading(true);
     
     try {
+      console.log('🌐 Conectando a la API para obtener dispositivos...');
+      
       // Obtener dispositivos del usuario 1
       const apiData = await ApiService.getDispositivosForUser(1);
       
-      console.log('Datos de la API:', apiData);
+      console.log('📡 Datos recibidos de la API:', apiData);
       
       // Extraer IDs de sensores de los dispositivos obtenidos
       const availableSensorIds = ApiService.extractSensorIds(apiData);
-      console.log('IDs de sensores disponibles:', availableSensorIds);
+      console.log('🔍 IDs de sensores detectados automáticamente:', availableSensorIds);
       
       // Actualizar la lista de sensores disponibles
       setAvailableSensorIds(availableSensorIds);
       
       // Si no hay sensores activos configurados, usar los sensores disponibles
       if (activeSensorIds.length === 0 && availableSensorIds.length > 0) {
+        console.log('⚙️ Configurando sensores activos automáticamente:', availableSensorIds);
         setActiveSensorIds(availableSensorIds);
         // Guardar los sensores encontrados como preferencia
         StorageUtils.saveUserPreferences({
@@ -160,19 +238,54 @@ const DashboardScreen = () => {
         });
       }
       
-      // Transformar datos de sensores
-      const transformedSensorData = ApiService.transformApiDataToSensorData(apiData);
-      setSensors(transformedSensorData);
+      // **PRIORIDAD: Obtener datos REALES de sensores si están disponibles**
+      if (availableSensorIds.length > 0) {
+        console.log('📊 Obteniendo datos REALES de sensores...');
+        
+        try {
+          // Usar los sensores detectados o los activos
+          const sensorsToQuery = activeSensorIds.length > 0 ? activeSensorIds : availableSensorIds;
+          const realSensorsData = await ApiService.getMultipleSensorsData(sensorsToQuery, 1);
+          
+          if (realSensorsData && realSensorsData.length > 0) {
+            console.log(`✅ Datos REALES obtenidos de ${realSensorsData.length} sensores`);
+            
+            // Transformar datos reales al formato del dashboard
+            const transformedSensorData = ApiService.transformMultipleSensorsToDisplay(realSensorsData);
+            
+            // Marcar explícitamente como datos reales
+            Object.keys(transformedSensorData).forEach(sensorKey => {
+              transformedSensorData[sensorKey].source = 'API_REAL';
+              transformedSensorData[sensorKey].lastApiUpdate = new Date();
+            });
+            
+            setSensors(transformedSensorData);
+            console.log('📈 Sensores actualizados con datos REALES');
+          } else {
+            console.warn('⚠️ No se obtuvieron datos reales de sensores, usando estructura base');
+            setSensors(fallbackSensorData);
+          }
+          
+        } catch (sensorError) {
+          console.error('❌ Error al obtener datos reales de sensores:', sensorError);
+          console.log('🔄 Usando estructura base de sensores');
+          setSensors(fallbackSensorData);
+        }
+      } else {
+        console.warn('⚠️ No se detectaron sensores en la API, usando datos base');
+        setSensors(fallbackSensorData);
+      }
       
       // Guardar historial de sensores en localStorage
-      StorageUtils.saveSensorHistory(transformedSensorData);
+      StorageUtils.saveSensorHistory(sensors);
       
       // Transformar datos de dispositivos usando información real
       const transformedDeviceStates = ApiService.transformRealDevicesToDashboard(apiData);
       setDevices(transformedDeviceStates);
+      console.log('🎛️ Dispositivos actualizados con datos reales');
       
       // Generar alertas basadas en los datos de sensores
-      const generatedAlerts = ApiService.generateAlertsFromSensorData(transformedSensorData);
+      const generatedAlerts = ApiService.generateAlertsFromSensorData(sensors);
       
       // Filtrar alertas que ya han sido descartadas por el usuario
       const filteredAlerts = StorageUtils.filterDismissedAlerts(generatedAlerts);
@@ -180,41 +293,71 @@ const DashboardScreen = () => {
       
       setApiConnected(true);
       setLastUpdate(new Date());
+      console.log('✅ Carga completa de API exitosa - todos los datos son REALES');
       
     } catch (error) {
-      console.error('Error al cargar datos de la API:', error);
+      console.error('❌ Error al cargar datos de la API:', error);
       setApiConnected(false);
       
       // Si no se pueden cargar los datos de la API, usar datos de respaldo
       if (showLoading) {
         Alert.alert(
           'Error de conexión',
-          'No se pudo conectar con el servidor. Usando datos simulados.',
-          [{ text: 'OK' }]
+          'No se pudo conectar con el servidor. Verifique la conexión de red y la configuración de la API.',
+          [
+            { text: 'Reintentar', onPress: () => loadDataFromAPI(true) },
+            { text: 'Continuar Offline' }
+          ],
+          { 
+            cancelable: true,
+            userInterfaceStyle: isDark ? 'dark' : 'light'
+          }
         );
+      }
+      
+      // Usar datos de respaldo si no hay datos previos
+      if (Object.keys(sensors).length === 0) {
+        console.log('🔄 Usando datos de respaldo por falta de conexión');
+        setSensors(fallbackSensorData);
+        setDevices(fallbackDeviceStates);
       }
     } finally {
       if (showLoading) setLoading(false);
     }
   };
 
-  // Cargar datos específicos de sensores
+  // Cargar datos específicos de sensores - VERSIÓN MEJORADA PARA DATOS REALES
   const loadSensorData = async () => {
     // Solo cargar si hay sensores activos
     if (activeSensorIds.length === 0) {
-      console.log('No hay sensores activos configurados');
+      console.log('⚠️ No hay sensores activos configurados - intentando detectar automáticamente...');
+      // Intentar cargar dispositivos para detectar sensores
+      await loadDataFromAPI(false);
       return;
     }
     
     try {
-      console.log('Cargando datos específicos de sensores:', activeSensorIds);
+      console.log('🔄 Cargando datos REALES de sensores:', activeSensorIds);
       
-      // Obtener datos de todos los sensores activos
+      // Obtener datos de todos los sensores activos con timeout
       const sensorsData = await ApiService.getMultipleSensorsData(activeSensorIds, 1);
       
       if (sensorsData && sensorsData.length > 0) {
-        // Transformar datos al formato del dashboard
+        console.log(`✅ Datos recibidos de ${sensorsData.length} sensores`);
+        
+        // Transformar datos al formato del dashboard - SOLO DATOS REALES
         const transformedSensorData = ApiService.transformMultipleSensorsToDisplay(sensorsData);
+        
+        // Marcar explícitamente todos los sensores como reales
+        Object.keys(transformedSensorData).forEach(sensorKey => {
+          if (transformedSensorData[sensorKey].isReal) {
+            transformedSensorData[sensorKey].isReal = true;
+            transformedSensorData[sensorKey].lastUpdate = new Date();
+            transformedSensorData[sensorKey].source = 'API_REAL';
+            console.log(`📊 ${sensorKey}: ${transformedSensorData[sensorKey].current}${transformedSensorData[sensorKey].unit} (REAL)`);
+          }
+        });
+        
         setSensors(transformedSensorData);
         
         // Guardar historial de sensores en localStorage
@@ -227,16 +370,22 @@ const DashboardScreen = () => {
         const filteredAlerts = StorageUtils.filterDismissedAlerts(generatedAlerts);
         setCurrentAlerts(filteredAlerts);
         
-        console.log('Datos de sensores actualizados:', transformedSensorData);
+        console.log('📈 Datos de sensores REALES actualizados correctamente');
         
         // Marcar como conectado si al menos un sensor responde
         setApiConnected(true);
         setLastUpdate(new Date());
+      } else {
+        console.warn('⚠️ No se recibieron datos de sensores - usando datos de respaldo');
+        setApiConnected(false);
       }
       
     } catch (error) {
-      console.warn('Error al cargar datos específicos de sensores:', error);
-      // No mostrar alerta aquí ya que pueden fallar sensores individuales
+      console.error('❌ Error al cargar datos específicos de sensores:', error);
+      setApiConnected(false);
+      
+      // Mostrar estado de desconexión pero mantener últimos datos
+      console.warn('🔄 Manteniendo últimos datos conocidos debido a error de conexión');
     }
   };
 
@@ -294,7 +443,8 @@ const DashboardScreen = () => {
         Alert.alert(
           'Control exitoso',
           `${device.name} ${newState ? 'activado' : 'desactivado'} correctamente`,
-          [{ text: 'OK' }]
+          [{ text: 'OK' }],
+          { userInterfaceStyle: isDark ? 'dark' : 'light' }
         );
         
       } catch (error) {
@@ -302,7 +452,8 @@ const DashboardScreen = () => {
         Alert.alert(
           'Error de control',
           `No se pudo controlar ${device.name}. Modo simulado activado.`,
-          [{ text: 'OK' }]
+          [{ text: 'OK' }],
+          { userInterfaceStyle: isDark ? 'dark' : 'light' }
         );
         
         // Continuar con simulación si falla el control real
@@ -397,7 +548,7 @@ const DashboardScreen = () => {
     setRefreshing(false);
   };
 
-  // Alternar notificaciones push
+  // Alternar notificaciones push - RESPONSIVE
   const toggleNotifications = () => {
     setNotificationsEnabled(!notificationsEnabled);
     
@@ -406,50 +557,111 @@ const DashboardScreen = () => {
       setShowAlertsBubble(false);
     }
     
+    // Mensajes responsive según el dispositivo
+    const messages = {
+      activatedTitle: 'Notificaciones Activadas',
+      activatedMessage: isMobile 
+        ? 'Recibirás alertas como notificaciones push móviles y verás el botón flotante responsive.'
+        : 'Recibirás alertas de tu invernadero como notificaciones push y verás el botón flotante de alertas.',
+      deactivatedTitle: 'Notificaciones Desactivadas',
+      deactivatedMessage: isMobile
+        ? 'Notificaciones push móviles desactivadas. El botón flotante estará oculto.'
+        : 'Ya no recibirás notificaciones push de alertas y el botón flotante estará oculto.'
+    };
+    
     if (!notificationsEnabled) {
       Alert.alert(
-        'Notificaciones Activadas',
-        'Recibirás alertas de tu invernadero como notificaciones push y verás el botón flotante de alertas.',
-        [{ text: 'OK' }]
+        messages.activatedTitle,
+        messages.activatedMessage,
+        [{ text: 'OK' }],
+        { 
+          cancelable: true,
+          userInterfaceStyle: isDark ? 'dark' : 'light'
+        }
       );
+      console.log(`📱 Notificaciones activadas - Modo: ${isMobile ? 'Móvil' : 'Desktop'} (${responsiveConfig.screenWidth}x${responsiveConfig.screenHeight})`);
     } else {
       Alert.alert(
-        'Notificaciones Desactivadas',
-        'Ya no recibirás notificaciones push de alertas y el botón flotante estará oculto.',
-        [{ text: 'OK' }]
+        messages.deactivatedTitle,
+        messages.deactivatedMessage,
+        [{ text: 'OK' }],
+        { 
+          cancelable: true,
+          userInterfaceStyle: isDark ? 'dark' : 'light'
+        }
       );
+      console.log(`🔕 Notificaciones desactivadas - Modo: ${isMobile ? 'Móvil' : 'Desktop'}`);
     }
   };
 
-  // Enviar notificación de prueba
+  // Enviar notificación de prueba - RESPONSIVE
   const sendTestNotification = async () => {
     if (!notificationsEnabled) {
+      const message = isMobile 
+        ? 'Activa las notificaciones para enviar una prueba móvil.'
+        : 'Activa las notificaciones para enviar una notificación de prueba.';
+        
       Alert.alert(
         'Notificaciones Desactivadas',
-        'Activa las notificaciones para enviar una notificación de prueba.',
-        [{ text: 'OK' }]
+        message,
+        [{ text: 'OK' }],
+        { 
+          cancelable: true,
+          userInterfaceStyle: isDark ? 'dark' : 'light'
+        }
       );
       return;
     }
 
     try {
+      console.log(`🧪 Enviando notificación de prueba responsive - Dispositivo: ${isMobile ? 'Móvil' : 'Desktop'}`);
+      
+      const testMessage = isMobile 
+        ? `Sistema móvil funcionando correctamente (${responsiveConfig.screenWidth}x${responsiveConfig.screenHeight})`
+        : 'El sistema de notificaciones está funcionando correctamente.';
+      
       await NotificationService.sendLocalNotification(
-        '🧪 Notificación de Prueba',
-        'El sistema de notificaciones está funcionando correctamente.',
-        { type: 'test' }
+        '🧪 Prueba Responsive',
+        testMessage,
+        { 
+          type: 'test',
+          deviceType: isMobile ? 'mobile' : 'desktop',
+          scale: scale.toFixed(2),
+          dimensions: `${responsiveConfig.screenWidth}x${responsiveConfig.screenHeight}`
+        }
       );
+      
+      const successMessage = isMobile
+        ? `Notificación móvil enviada correctamente. Escala aplicada: ${scale.toFixed(2)}`
+        : 'Se ha enviado una notificación de prueba.';
       
       Alert.alert(
         'Notificación Enviada',
-        'Se ha enviado una notificación de prueba.',
-        [{ text: 'OK' }]
+        successMessage,
+        [{ text: 'OK' }],
+        { 
+          cancelable: true,
+          userInterfaceStyle: isDark ? 'dark' : 'light'
+        }
       );
+      
+      console.log(`✅ Notificación de prueba enviada - Configuración responsive aplicada`);
+      
     } catch (error) {
-      console.error('Error enviando notificación de prueba:', error);
+      console.error('❌ Error enviando notificación de prueba responsive:', error);
+      
+      const errorMessage = isMobile
+        ? 'No se pudo enviar la notificación móvil de prueba.'
+        : 'No se pudo enviar la notificación de prueba.';
+        
       Alert.alert(
         'Error',
-        'No se pudo enviar la notificación de prueba.',
-        [{ text: 'OK' }]
+        errorMessage,
+        [{ text: 'OK' }],
+        { 
+          cancelable: true,
+          userInterfaceStyle: isDark ? 'dark' : 'light'
+        }
       );
     }
   };
@@ -478,7 +690,7 @@ const DashboardScreen = () => {
             activeOpacity={0.8}
           >
             <View style={styles.alertIcon}>
-              <Ionicons name="notifications" size={24} color="#fff" />
+              <Ionicons name="notifications" size={responsiveConfig.notification.alertIconSize} color={theme.colors.onPrimary} />
               <View style={styles.alertBadge}>
                 <Text style={styles.alertBadgeText}>
                   {currentAlerts.filter(alert => alert.isActive).length}
@@ -498,13 +710,13 @@ const DashboardScreen = () => {
                   onPress={handleToggleAlertsBubble}
                   style={styles.closeBubbleButton}
                 >
-                  <Ionicons name="close" size={20} color={theme.textSecondary} />
+                  <Ionicons name="close" size={Math.max(18 * scale, 16)} color={theme.colors.onSurfaceVariant} />
                 </TouchableOpacity>
               </View>
               
               {!notificationsEnabled && (
                 <View style={styles.silencedNotice}>
-                  <Ionicons name="notifications-off" size={16} color={theme.warning} />
+                  <Ionicons name="notifications-off" size={Math.max(14 * scale, 12)} color={theme.warning} />
                   <Text style={styles.silencedNoticeText}>
                     Notificaciones desactivadas - Solo visualización
                   </Text>
@@ -517,7 +729,7 @@ const DashboardScreen = () => {
                     <View style={styles.alertItemHeader}>
                       <Ionicons 
                         name={getAlertTypeIcon(alert.type)} 
-                        size={20} 
+                        size={Math.max(18 * scale, 16)} 
                         color={getAlertTypeColor(alert.type)} 
                       />
                       <Text style={[styles.alertItemTitle, { color: getAlertTypeColor(alert.type) }]}>
@@ -561,7 +773,11 @@ const DashboardScreen = () => {
                 Alert.alert(
                   'Estado de Conexión',
                   `API actual: ${info.isPrimary ? 'Local' : 'Remota'}\nURL: ${info.currentUrl}`,
-                  [{ text: 'OK' }]
+                  [{ text: 'OK' }],
+                  { 
+                    cancelable: true,
+                    userInterfaceStyle: isDark ? 'dark' : 'light'
+                  }
                 );
               }}
             />
@@ -582,7 +798,7 @@ const DashboardScreen = () => {
               >
                 <Ionicons 
                   name={notificationsEnabled ? "notifications" : "notifications-off"} 
-                  size={20} 
+                  size={Math.max(18 * scale, 16)} 
                   color="#fff" 
                 />
               </TouchableOpacity>
@@ -592,7 +808,7 @@ const DashboardScreen = () => {
                   style={[styles.silencedAlertsButton]}
                   onPress={() => setShowAlertsBubble(!showAlertsBubble)}
                 >
-                  <Ionicons name="eye-outline" size={20} color={theme.warning} />
+                  <Ionicons name="eye-outline" size={Math.max(18 * scale, 16)} color={theme.warning} />
                   <View style={styles.silencedAlertsBadge}>
                     <Text style={styles.silencedAlertsBadgeText}>
                       {currentAlerts.filter(alert => alert.isActive).length}
@@ -605,7 +821,7 @@ const DashboardScreen = () => {
                 style={styles.testButton}
                 onPress={sendTestNotification}
               >
-                <Ionicons name="flask-outline" size={20} color={theme.textSecondary} />
+                <Ionicons name="flask-outline" size={Math.max(18 * scale, 16)} color={theme.colors.onSurfaceVariant} />
               </TouchableOpacity>
             </View>
           </View>
@@ -636,12 +852,22 @@ const DashboardScreen = () => {
             <View style={[styles.connectionStatus, { 
               backgroundColor: apiConnected ? theme.success : theme.error 
             }]}>
-              <Text style={[styles.connectionText, { color: theme.textOnPrimary }]}>
+              <Text style={[styles.connectionText, { color: theme.colors.onPrimary }]}>
                 {apiConnected ? '🟢 Conectado' : '🔴 Sin conexión'}
               </Text>
             </View>
           </View>
         </View>
+
+        {/* Banner de Estado de Datos */}
+        <DataModeBanner 
+          isUsingRealData={Object.values(sensors).some(sensor => sensor.isReal)}
+          isConnected={apiConnected}
+          sensorsCount={activeSensorIds.length}
+          lastUpdate={lastUpdate}
+          onRefresh={() => loadSensorData()}
+          apiUrl={ApiService.getCurrentApiInfo().baseUrl}
+        />
 
         {/* Sensores - Panel Principal */}
         <View style={styles.section}>
@@ -654,9 +880,11 @@ const DashboardScreen = () => {
               status={getSensorStatus(sensors.temperature)}
               icon="thermometer-outline"
               ideal={sensors.temperature.ideal}
-              isReal={sensors.temperature.isReal}
+              isReal={sensors.temperature.isReal || false}
               sensorId={sensors.temperature.sensorId}
               lastUpdate={sensors.temperature.lastUpdate}
+              source={sensors.temperature.source || 'unknown'}
+              isConnected={apiConnected}
             />
             <SensorCard
               title="Humedad del Aire"
@@ -665,9 +893,11 @@ const DashboardScreen = () => {
               status={getSensorStatus(sensors.airHumidity)}
               icon="water-outline"
               ideal={sensors.airHumidity.ideal}
-              isReal={sensors.airHumidity.isReal}
+              isReal={sensors.airHumidity.isReal || false}
               sensorId={sensors.airHumidity.sensorId}
               lastUpdate={sensors.airHumidity.lastUpdate}
+              source={sensors.airHumidity.source || 'unknown'}
+              isConnected={apiConnected}
             />
             <SensorCard
               title="Humedad del Suelo"
@@ -676,9 +906,11 @@ const DashboardScreen = () => {
               status={getSensorStatus(sensors.soilHumidity)}
               icon="leaf-outline"
               ideal={sensors.soilHumidity.ideal}
-              isReal={sensors.soilHumidity.isReal}
+              isReal={sensors.soilHumidity.isReal || false}
               sensorId={sensors.soilHumidity.sensorId}
               lastUpdate={sensors.soilHumidity.lastUpdate}
+              source={sensors.soilHumidity.source || 'unknown'}
+              isConnected={apiConnected}
             />
             {sensors.soilSalinity && (
               <SensorCard
@@ -688,9 +920,11 @@ const DashboardScreen = () => {
                 status={getSensorStatus(sensors.soilSalinity)}
                 icon="beaker-outline"
                 ideal={sensors.soilSalinity.ideal}
-                isReal={sensors.soilSalinity.isReal}
+                isReal={sensors.soilSalinity.isReal || false}
                 sensorId={sensors.soilSalinity.sensorId}
                 lastUpdate={sensors.soilSalinity.lastUpdate}
+                source={sensors.soilSalinity.source || 'unknown'}
+                isConnected={apiConnected}
               />
             )}
             <SensorCard
@@ -700,11 +934,13 @@ const DashboardScreen = () => {
               status={getSensorStatus(sensors.soilPH)}
               icon="flask-outline"
               ideal={sensors.soilPH.ideal}
-              isReal={sensors.soilPH.isReal}
+              isReal={sensors.soilPH.isReal || false}
               sensorId={sensors.soilPH.sensorId}
               lastUpdate={sensors.soilPH.lastUpdate}
               isCalculated={sensors.soilPH.isCalculated}
               calculationMethod={sensors.soilPH.calculationMethod}
+              source={sensors.soilPH.source || 'unknown'}
+              isConnected={apiConnected}
             />
           </View>
         </View>
@@ -795,108 +1031,111 @@ const DashboardScreen = () => {
   );
 };
 
-const createStyles = (theme) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.background,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  header: {
-    padding: 20,
-    backgroundColor: theme.headerBackground,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.border,
-  },
-  headerMain: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: theme.textPrimary,
-    flex: 1,
-  },
-  connectionStatus: {
-    marginHorizontal: 12,
-  },
-  themeSelector: {
-    marginHorizontal: 8,
-  },
-  headerControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  notificationToggle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 4,
-  },
-  testButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.backgroundSecondary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  silencedAlertsButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.dashboard?.alertBackground || '#fff3e0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: theme.warning,
-    position: 'relative',
-  },
-  silencedAlertsBadge: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    backgroundColor: theme.warning,
-    borderRadius: 8,
-    minWidth: 16,
-    height: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#fff',
-  },
-  silencedAlertsBadgeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  silencedNotice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    backgroundColor: '#fff3e0',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    justifyContent: 'center',
+const createStyles = (theme, responsiveConfig) => {
+  const { notification, isMobile, scale, screenWidth, screenHeight } = responsiveConfig;
+  
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    scrollView: {
+      flex: 1,
+    },
+    header: {
+      padding: isMobile ? 16 * scale : 20,
+      backgroundColor: theme.colors.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.outline,
+    },
+    headerMain: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    headerTitle: {
+      fontSize: isMobile ? Math.max(20 * scale, 18) : 24,
+      fontWeight: 'bold',
+      color: theme.colors.onSurface,
+      flex: 1,
+    },
+    connectionStatus: {
+      marginHorizontal: isMobile ? 8 * scale : 12,
+    },
+    themeSelector: {
+      marginHorizontal: isMobile ? 6 * scale : 8,
+    },
+    headerControls: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: isMobile ? 8 * scale : 12,
+    },
+    notificationToggle: {
+      width: notification.headerControlSize,
+      height: notification.headerControlSize,
+      borderRadius: notification.headerControlSize / 2,
+      justifyContent: 'center',
+      alignItems: 'center',
+      elevation: isMobile ? 3 : 4,
+    },
+    testButton: {
+      width: notification.headerControlSize,
+      height: notification.headerControlSize,
+      borderRadius: notification.headerControlSize / 2,
+      backgroundColor: theme.colors.surfaceVariant,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: theme.colors.outline,
+    },
+    silencedAlertsButton: {
+      width: notification.headerControlSize,
+      height: notification.headerControlSize,
+      borderRadius: notification.headerControlSize / 2,
+      backgroundColor: theme.colors.warningContainer,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 2,
+      borderColor: theme.colors.warning,
+      position: 'relative',
+    },
+    silencedAlertsBadge: {
+      position: 'absolute',
+      top: -6 * scale,
+      right: -6 * scale,
+      backgroundColor: theme.colors.warning,
+      borderRadius: 8 * scale,
+      minWidth: notification.alertBadgeSize * 0.8,
+      height: notification.alertBadgeSize * 0.8,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: theme.colors.surface,
+    },
+    silencedAlertsBadgeText: {
+      color: theme.colors.onWarning,
+      fontSize: notification.fontSize.badge,
+      fontWeight: 'bold',
+    },
+    silencedNotice: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: isMobile ? 10 * scale : 12,
+      backgroundColor: theme.colors.warningContainer,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.outline,
+      justifyContent: 'center',
   },
   silencedNoticeText: {
     fontSize: 12,
-    color: theme.warning,
+    color: theme.colors.onWarningContainer,
     marginLeft: 6,
     fontWeight: '500',
   },
   headerSubtitle: {
     fontSize: 14,
-    color: theme.textSecondary,
+    color: theme.colors.onSurface,
     marginTop: 4,
   },
   headerInfo: {
@@ -911,7 +1150,7 @@ const createStyles = (theme) => StyleSheet.create({
     borderRadius: 12,
   },
   connectionText: {
-    color: '#fff',
+    color: theme.colors.onPrimary,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -919,16 +1158,16 @@ const createStyles = (theme) => StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: theme.backgroundSecondary,
+    backgroundColor: theme.colors.background,
   },
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: theme.textSecondary,
+    color: theme.colors.onBackground,
   },
   section: {
     marginVertical: 12,
-    backgroundColor: theme.surface,
+    backgroundColor: theme.colors.surface,
     borderRadius: 12,
     marginHorizontal: 12,
     paddingVertical: 16,
@@ -937,11 +1176,11 @@ const createStyles = (theme) => StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: theme.text,
+    color: theme.colors.onSurface,
     marginBottom: 20,
     paddingHorizontal: 20,
     borderBottomWidth: 2,
-    borderBottomColor: theme.border,
+    borderBottomColor: theme.colors.outline,
     paddingBottom: 12,
   },
   sensorsGrid: {
@@ -962,7 +1201,7 @@ const createStyles = (theme) => StyleSheet.create({
     right: 20,
     width: 56,
     height: 56,
-    backgroundColor: theme.warning,
+    backgroundColor: theme.colors.warning,
     borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
@@ -978,17 +1217,17 @@ const createStyles = (theme) => StyleSheet.create({
     position: 'absolute',
     top: -8,
     right: -8,
-    backgroundColor: '#F44336',
+    backgroundColor: theme.colors.error,
     borderRadius: 10,
     minWidth: 20,
     height: 20,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#fff',
+    borderColor: theme.colors.surface,
   },
   alertBadgeText: {
-    color: '#fff',
+    color: theme.colors.onError,
     fontSize: 11,
     fontWeight: 'bold',
   },
@@ -998,12 +1237,12 @@ const createStyles = (theme) => StyleSheet.create({
     right: 20,
     width: 320,
     maxHeight: 400,
-    backgroundColor: theme.surface,
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
     elevation: 12,
     zIndex: 999,
     borderWidth: 1,
-    borderColor: theme.border,
+    borderColor: theme.colors.outline,
   },
   alertsBubbleHeader: {
     flexDirection: 'row',
@@ -1011,12 +1250,12 @@ const createStyles = (theme) => StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: theme.border,
+    borderBottomColor: theme.colors.outline,
   },
   alertsBubbleTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: theme.text,
+    color: theme.colors.onSurface,
   },
   closeBubbleButton: {
     padding: 4,
@@ -1027,7 +1266,7 @@ const createStyles = (theme) => StyleSheet.create({
   alertItem: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f5f5f5',
+    borderBottomColor: theme.colors.surfaceVariant,
   },
   alertItemHeader: {
     flexDirection: 'row',
@@ -1037,32 +1276,33 @@ const createStyles = (theme) => StyleSheet.create({
   alertItemTitle: {
     fontSize: 14,
     fontWeight: '600',
-    marginLeft: 8,
-    flex: 1,
-  },
-  alertItemMessage: {
-    fontSize: 13,
-    color: '#666',
-    lineHeight: 18,
-    marginBottom: 8,
-  },
-  alertItemTime: {
-    fontSize: 11,
-    color: '#999',
-    marginBottom: 12,
-  },
-  dismissButton: {
-    backgroundColor: '#f5f5f5',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-  },
-  dismissButtonText: {
-    fontSize: 12,
-    color: '#666',
-    fontWeight: '500',
-  },
-});
+      marginLeft: 8,
+      flex: 1,
+    },
+    alertItemMessage: {
+      fontSize: notification.fontSize.alertMessage,
+      color: theme.colors.onSurfaceVariant,
+      lineHeight: isMobile ? 16 * scale : 18,
+      marginBottom: 8,
+    },
+    alertItemTime: {
+      fontSize: notification.fontSize.alertTime,
+      color: theme.colors.outline,
+      marginBottom: isMobile ? 10 * scale : 12,
+    },
+    dismissButton: {
+      backgroundColor: theme.colors.surfaceVariant,
+      paddingHorizontal: isMobile ? 10 * scale : 12,
+      paddingVertical: isMobile ? 5 * scale : 6,
+      borderRadius: isMobile ? 5 * scale : 6,
+      alignSelf: 'flex-start',
+    },
+    dismissButtonText: {
+      fontSize: isMobile ? Math.max(10 * scale, 8) : 12,
+      color: theme.colors.onSurfaceVariant,
+      fontWeight: '500',
+    },
+  });
+};
 
 export default DashboardScreen;

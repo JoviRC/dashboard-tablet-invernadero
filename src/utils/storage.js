@@ -5,8 +5,7 @@ class StorageUtils {
     USER_PREFERENCES: 'greenhouse_user_preferences',
     SENSOR_HISTORY: 'greenhouse_sensor_history',
     DEVICE_SETTINGS: 'greenhouse_device_settings',
-    CUSTOM_RANGES: 'greenhouse_custom_ranges',
-    DISMISSED_ALERTS: 'greenhouse_dismissed_alerts'
+    CUSTOM_RANGES: 'greenhouse_custom_ranges'
   };
 
   // Guardar preferencias del usuario
@@ -143,138 +142,126 @@ class StorageUtils {
     }
   }
 
-  // === GESTIÓN DE ALERTAS DESCARTADAS ===
-
-  // Generar un ID único para una alerta basado en su contenido
-  static generateAlertHash(alert) {
-    // Crear un hash simple basado en el contenido de la alerta
-    const content = `${alert.type}_${alert.sensorKey}_${alert.message}`;
-    return btoa(content).replace(/[^A-Za-z0-9]/g, ''); // Base64 limpio
+  // Métodos genéricos para cualquier clave
+  static async setItem(key, value) {
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch (error) {
+      console.warn('Error setting item:', error);
+      return false;
+    }
   }
 
-  // Marcar una alerta como descartada
-  static dismissAlert(alert) {
+  static async getItem(key) {
     try {
-      const dismissedAlerts = this.getDismissedAlerts();
-      const alertHash = this.generateAlertHash(alert);
-      
-      // Añadir a la lista de descartadas con timestamp
-      dismissedAlerts[alertHash] = {
-        dismissedAt: new Date().toISOString(),
-        alertType: alert.type,
-        sensorKey: alert.sensorKey,
-        message: alert.message,
-        count: (dismissedAlerts[alertHash]?.count || 0) + 1
-      };
-
-      localStorage.setItem(this.KEYS.DISMISSED_ALERTS, JSON.stringify(dismissedAlerts));
-      console.log(`📝 Alerta descartada: ${alert.type} - ${alert.message}`);
+      return localStorage.getItem(key);
     } catch (error) {
-      console.warn('Error dismissing alert:', error);
+      console.warn('Error getting item:', error);
+      return null;
+    }
+  }
+
+  static async removeItem(key) {
+    try {
+      localStorage.removeItem(key);
+      return true;
+    } catch (error) {
+      console.warn('Error removing item:', error);
+      return false;
+    }
+  }
+
+  // Limpiar alertas descartadas antiguas
+  static cleanOldDismissedAlerts(maxAgeHours = 24) {
+    try {
+      const dismissed = this.getDismissedAlerts();
+      const now = Date.now();
+      const maxAge = maxAgeHours * 60 * 60 * 1000; // Convertir horas a milisegundos
+      
+      const filteredDismissed = dismissed.filter(item => {
+        return (now - item.timestamp) < maxAge;
+      });
+      
+      this.setDismissedAlerts(filteredDismissed);
+      
+      return filteredDismissed.length;
+    } catch (error) {
+      console.warn('Error cleaning old dismissed alerts:', error);
+      return 0;
     }
   }
 
   // Obtener alertas descartadas
   static getDismissedAlerts() {
     try {
-      const stored = localStorage.getItem(this.KEYS.DISMISSED_ALERTS);
-      return stored ? JSON.parse(stored) : {};
+      const stored = localStorage.getItem('dismissed_alerts');
+      return stored ? JSON.parse(stored) : [];
     } catch (error) {
-      console.warn('Error loading dismissed alerts:', error);
-      return {};
+      console.warn('Error getting dismissed alerts:', error);
+      return [];
     }
   }
 
-  // Verificar si una alerta ya fue descartada
-  static isAlertDismissed(alert) {
+  // Guardar alertas descartadas
+  static setDismissedAlerts(dismissedAlerts) {
     try {
-      const dismissedAlerts = this.getDismissedAlerts();
-      const alertHash = this.generateAlertHash(alert);
-      return !!dismissedAlerts[alertHash];
+      localStorage.setItem('dismissed_alerts', JSON.stringify(dismissedAlerts));
+      return true;
+    } catch (error) {
+      console.warn('Error setting dismissed alerts:', error);
+      return false;
+    }
+  }
+
+  // Agregar una alerta descartada
+  static addDismissedAlert(alertId) {
+    try {
+      const dismissed = this.getDismissedAlerts();
+      const timestamp = Date.now();
+      
+      // Evitar duplicados
+      if (!dismissed.find(item => item.id === alertId)) {
+        dismissed.push({ id: alertId, timestamp });
+        this.setDismissedAlerts(dismissed);
+      }
+      
+      return true;
+    } catch (error) {
+      console.warn('Error adding dismissed alert:', error);
+      return false;
+    }
+  }
+
+  // Verificar si una alerta está descartada
+  static isAlertDismissed(alertId) {
+    try {
+      const dismissed = this.getDismissedAlerts();
+      return dismissed.some(item => item.id === alertId);
     } catch (error) {
       console.warn('Error checking dismissed alert:', error);
       return false;
     }
   }
 
-  // Filtrar alertas, excluyendo las ya descartadas
+  // Filtrar alertas que han sido descartadas
   static filterDismissedAlerts(alerts) {
     try {
-      const dismissedAlerts = this.getDismissedAlerts();
+      if (!Array.isArray(alerts)) {
+        console.warn('filterDismissedAlerts: alerts is not an array:', alerts);
+        return [];
+      }
+      
+      const dismissed = this.getDismissedAlerts();
+      const dismissedIds = dismissed.map(item => item.id);
       
       return alerts.filter(alert => {
-        const alertHash = this.generateAlertHash(alert);
-        const isDismissed = !!dismissedAlerts[alertHash];
-        
-        if (isDismissed) {
-          console.log(`🚫 Alerta filtrada (ya descartada): ${alert.type} - ${alert.message}`);
-        }
-        
-        return !isDismissed;
+        const alertId = alert.id || alert.alertId || alert.key;
+        return !dismissedIds.includes(alertId);
       });
     } catch (error) {
       console.warn('Error filtering dismissed alerts:', error);
-      return alerts; // En caso de error, devolver todas las alertas
-    }
-  }
-
-  // Limpiar alertas descartadas antiguas (más de X días)
-  static cleanOldDismissedAlerts(daysOld = 7) {
-    try {
-      const dismissedAlerts = this.getDismissedAlerts();
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - daysOld);
-      
-      let cleanedCount = 0;
-      Object.keys(dismissedAlerts).forEach(hash => {
-        const dismissedAt = new Date(dismissedAlerts[hash].dismissedAt);
-        if (dismissedAt < cutoffDate) {
-          delete dismissedAlerts[hash];
-          cleanedCount++;
-        }
-      });
-
-      if (cleanedCount > 0) {
-        localStorage.setItem(this.KEYS.DISMISSED_ALERTS, JSON.stringify(dismissedAlerts));
-        console.log(`🧹 Limpiadas ${cleanedCount} alertas descartadas antiguas`);
-      }
-    } catch (error) {
-      console.warn('Error cleaning old dismissed alerts:', error);
-    }
-  }
-
-  // Obtener estadísticas de alertas descartadas
-  static getDismissedAlertsStats() {
-    try {
-      const dismissedAlerts = this.getDismissedAlerts();
-      const totalDismissed = Object.keys(dismissedAlerts).length;
-      
-      const byType = {};
-      const bySensor = {};
-      
-      Object.values(dismissedAlerts).forEach(alert => {
-        // Por tipo
-        byType[alert.alertType] = (byType[alert.alertType] || 0) + alert.count;
-        
-        // Por sensor
-        if (alert.sensorKey) {
-          bySensor[alert.sensorKey] = (bySensor[alert.sensorKey] || 0) + alert.count;
-        }
-      });
-
-      return {
-        totalDismissed,
-        byType,
-        bySensor,
-        oldestDismissal: Object.values(dismissedAlerts).reduce((oldest, current) => {
-          return !oldest || new Date(current.dismissedAt) < new Date(oldest.dismissedAt) 
-            ? current 
-            : oldest;
-        }, null)
-      };
-    } catch (error) {
-      console.warn('Error getting dismissed alerts stats:', error);
-      return { totalDismissed: 0, byType: {}, bySensor: {} };
+      return alerts || [];
     }
   }
 }

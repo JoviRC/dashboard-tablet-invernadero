@@ -8,13 +8,12 @@ import {
   Alert 
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColors } from '../contexts/ThemeContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 const SensorManager = ({ activeSensorIds, onSensorIdsChange, availableSensorIds = [] }) => {
+  const { theme } = useTheme();
   const [newSensorId, setNewSensorId] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
-  const theme = useThemeColors();
-  const styles = getStyles(theme);
 
   const addSensor = () => {
     const sensorId = parseInt(newSensorId.trim());
@@ -64,38 +63,38 @@ const SensorManager = ({ activeSensorIds, onSensorIdsChange, availableSensorIds 
 
   if (!isExpanded) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: theme.colors.surface }] }>
         <TouchableOpacity 
           style={styles.toggleButton}
           onPress={() => setIsExpanded(true)}
         >
-          <Ionicons name="settings-outline" size={20} color={theme.textSecondary} />
-          <Text style={styles.toggleText}>Gestionar Sensores</Text>
+          <Ionicons name="settings-outline" size={20} color={theme.colors.onSurfaceVariant} />
+          <Text style={[styles.toggleText, { color: theme.colors.text }] }>Gestionar Sensores</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.colors.surface }] }>
       <View style={styles.header}>
-        <Text style={styles.title}>Gestión de Sensores</Text>
+        <Text style={[styles.title, { color: theme.colors.text }] }>Gestión de Sensores</Text>
         <TouchableOpacity onPress={() => setIsExpanded(false)}>
-          <Ionicons name="close" size={24} color={theme.textSecondary} />
+          <Ionicons name="close" size={24} color={theme.colors.onSurfaceVariant} />
         </TouchableOpacity>
       </View>
-      
       <View style={styles.addSensorSection}>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { color: theme.colors.text, backgroundColor: theme.colors.background }] }
           placeholder="ID del sensor (ej: 8875272)"
+          placeholderTextColor={theme.colors.onSurfaceVariant}
           value={newSensorId}
           onChangeText={setNewSensorId}
           keyboardType="numeric"
         />
-        <TouchableOpacity style={styles.addButton} onPress={addSensor}>
-          <Ionicons name="add" size={20} color="white" />
-          <Text style={styles.addButtonText}>Agregar</Text>
+        <TouchableOpacity style={[styles.addButton, { backgroundColor: theme.colors.primary }]} onPress={addSensor}>
+          <Ionicons name="add" size={20} color={theme.colors.onPrimary} />
+          <Text style={[styles.addButtonText, { color: theme.colors.onPrimary }] }>Agregar</Text>
         </TouchableOpacity>
       </View>
       
@@ -113,7 +112,7 @@ const SensorManager = ({ activeSensorIds, onSensorIdsChange, availableSensorIds 
                   onPress={() => addAvailableSensor(sensorId)}
                 >
                   <Text style={styles.availableSensorText}>ID: {sensorId}</Text>
-                  <Ionicons name="add-circle-outline" size={20} color={theme.success} />
+                  <Ionicons name="add-circle-outline" size={20} color="#4CAF50" />
                 </TouchableOpacity>
               ))}
           </View>
@@ -135,7 +134,7 @@ const SensorManager = ({ activeSensorIds, onSensorIdsChange, availableSensorIds 
                 style={styles.removeButton}
                 onPress={() => removeSensor(sensorId)}
               >
-                <Ionicons name="trash-outline" size={16} color={theme.error} />
+                <Ionicons name="trash-outline" size={16} color="#F44336" />
               </TouchableOpacity>
             </View>
           ))
@@ -145,9 +144,9 @@ const SensorManager = ({ activeSensorIds, onSensorIdsChange, availableSensorIds 
   );
 };
 
-const getStyles = (theme) => StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
-    backgroundColor: theme.surface,
+    backgroundColor: '#fff',
     margin: 16,
     padding: 16,
     borderRadius: 12,
@@ -163,7 +162,7 @@ const getStyles = (theme) => StyleSheet.create({
   toggleText: {
     marginLeft: 8,
     fontSize: 16,
-    color: theme.textSecondary,
+    color: '#666',
   },
   header: {
     flexDirection: 'row',
@@ -174,7 +173,7 @@ const getStyles = (theme) => StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: theme.text,
+    color: '#333',
   },
   addSensorSection: {
     flexDirection: 'row',
@@ -183,17 +182,15 @@ const getStyles = (theme) => StyleSheet.create({
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: theme.border,
+    borderColor: '#ddd',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
     marginRight: 8,
     fontSize: 16,
-    backgroundColor: theme.surface,
-    color: theme.text,
   },
   addButton: {
-    backgroundColor: theme.success,
+    backgroundColor: '#4CAF50',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
@@ -211,7 +208,7 @@ const getStyles = (theme) => StyleSheet.create({
   subtitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: theme.text,
+    color: '#333',
     marginBottom: 8,
   },
   sensorItem: {
@@ -220,13 +217,13 @@ const getStyles = (theme) => StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     paddingHorizontal: 12,
-    backgroundColor: theme.backgroundSecondary,
+    backgroundColor: '#f5f5f5',
     borderRadius: 8,
     marginBottom: 4,
   },
   sensorId: {
     fontSize: 14,
-    color: theme.text,
+    color: '#333',
   },
   removeButton: {
     padding: 4,
@@ -234,10 +231,10 @@ const getStyles = (theme) => StyleSheet.create({
   availableSensorsSection: {
     marginBottom: 16,
     padding: 12,
-    backgroundColor: theme.backgroundSecondary,
+    backgroundColor: '#f0f8f0',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: theme.success,
+    borderColor: '#4CAF50',
   },
   availableSensorsList: {
     marginTop: 8,
@@ -248,27 +245,27 @@ const getStyles = (theme) => StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     paddingHorizontal: 12,
-    backgroundColor: theme.surface,
+    backgroundColor: 'white',
     borderRadius: 6,
     marginBottom: 4,
     borderWidth: 1,
-    borderColor: theme.success,
+    borderColor: '#4CAF50',
   },
   availableSensorText: {
     fontSize: 14,
-    color: theme.text,
+    color: '#333',
     fontWeight: '500',
   },
   noAvailableText: {
     fontSize: 12,
-    color: theme.textSecondary,
+    color: '#666',
     fontStyle: 'italic',
     textAlign: 'center',
     marginTop: 8,
   },
   noSensorsText: {
     fontSize: 14,
-    color: theme.textSecondary,
+    color: '#999',
     fontStyle: 'italic',
     textAlign: 'center',
     paddingVertical: 16,
