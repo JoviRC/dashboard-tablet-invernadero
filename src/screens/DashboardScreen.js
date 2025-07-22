@@ -72,6 +72,7 @@ const DashboardScreen = () => {
   };
   
   const styles = createStyles(theme, responsiveConfig);
+  // Los sensores ahora están indexados por macAddress, no por id
   const [sensors, setSensors] = useState(fallbackSensorData);
   const [devices, setDevices] = useState(fallbackDeviceStates);
   const [currentAlerts, setCurrentAlerts] = useState([]);
@@ -84,9 +85,10 @@ const DashboardScreen = () => {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const previousAlertsRef = useRef([]);
   const [userPreferences, setUserPreferences] = useState(() => StorageUtils.getUserPreferences());
+  // activeSensorIds ahora debe contener macAddress (string), no id numérico
   const [activeSensorIds, setActiveSensorIds] = useState(() => {
     const prefs = StorageUtils.getUserPreferences();
-    return prefs.activeSensorIds || []; // Inicialmente vacío, se llenará desde la API
+    return prefs.activeSensorIds || []; // Deben ser macAddress
   });
   const [availableSensorIds, setAvailableSensorIds] = useState([]); // Sensores detectados automáticamente
 
@@ -374,94 +376,44 @@ const DashboardScreen = () => {
         
         // Marcar como conectado si al menos un sensor responde
         setApiConnected(true);
+    try {
+      console.log('🔄 Cargando datos REALES de sensores (macAddress):', activeSensorIds);
+      // Obtener datos de todos los sensores activos usando macAddress
+      const sensorsData = await ApiService.getMultipleSensorsData(activeSensorIds, 1);
+      if (sensorsData && sensorsData.length > 0) {
+        console.log(`✅ Datos recibidos de ${sensorsData.length} sensores (macAddress)`);
+        // Transformar datos al formato del dashboard - SOLO DATOS REALES
+        const transformedSensorData = ApiService.transformMultipleSensorsToDisplay(sensorsData);
+        // Marcar explícitamente todos los sensores como reales
+        Object.keys(transformedSensorData).forEach(macAddress => {
+          if (transformedSensorData[macAddress].isReal) {
+            transformedSensorData[macAddress].isReal = true;
+            transformedSensorData[macAddress].lastUpdate = new Date();
+            transformedSensorData[macAddress].source = 'API_REAL';
+            console.log(`📊 ${macAddress}: ${transformedSensorData[macAddress].current}${transformedSensorData[macAddress].unit} (REAL)`);
+          }
+        });
+        setSensors(transformedSensorData);
+        // Guardar historial de sensores en localStorage
+        StorageUtils.saveSensorHistory(transformedSensorData);
+        // Generar alertas basadas en los datos actualizados de sensores
+        const generatedAlerts = ApiService.generateAlertsFromSensorData(transformedSensorData);
+        // Filtrar alertas que ya han sido descartadas por el usuario
+        const filteredAlerts = StorageUtils.filterDismissedAlerts(generatedAlerts);
+        setCurrentAlerts(filteredAlerts);
+        console.log('📈 Datos de sensores REALES actualizados correctamente (macAddress)');
+        // Marcar como conectado si al menos un sensor responde
+        setApiConnected(true);
         setLastUpdate(new Date());
       } else {
         console.warn('⚠️ No se recibieron datos de sensores - usando datos de respaldo');
         setApiConnected(false);
       }
-      
     } catch (error) {
       console.error('❌ Error al cargar datos específicos de sensores:', error);
       setApiConnected(false);
-      
       // Mostrar estado de desconexión pero mantener últimos datos
       console.warn('🔄 Manteniendo últimos datos conocidos debido a error de conexión');
-    }
-  };
-
-  const updateSensorData = () => {
-    setSensors(prevSensors => {
-      const newSensors = { ...prevSensors };
-      
-      // Simular cambios pequeños en los valores
-      Object.keys(newSensors).forEach(key => {
-        const current = newSensors[key].current;
-        const variation = (Math.random() - 0.5) * 2; // Variación de -1 a +1
-        newSensors[key].current = Math.round((current + variation) * 10) / 10;
-        
-        // Actualizar historial
-        newSensors[key].history = [
-          ...newSensors[key].history.slice(1),
-          newSensors[key].current
-        ];
-      });
-      
-      return newSensors;
-    });
-  };
-
-  const getSensorStatus = (sensor) => {
-    const { current, ideal } = sensor;
-    if (current >= ideal.min && current <= ideal.max) return 'optimal';
-    if (current < ideal.min * 0.8 || current > ideal.max * 1.2) return 'critical';
-    return 'warning';
-  };
-
-  const handleDeviceToggle = async (deviceKey) => {
-    const device = devices[deviceKey];
-    const newState = !device.isActive && !device.isOpen;
-    
-    // Si hay un dispositivo real conectado, intentar controlarlo
-    if (device.realDevice && device.realDevice.id) {
-      try {
-        console.log(`Controlando dispositivo real: ${device.realDevice.name} (ID: ${device.realDevice.id})`);
-        await ApiService.controlSwitch(device.realDevice.id, newState);
-        
-        // Si el control fue exitoso, actualizar el estado local
-        const newDevices = {
-          ...devices,
-          [deviceKey]: {
-            ...devices[deviceKey],
-            isActive: deviceKey === 'windows' ? device.isOpen : newState,
-            isOpen: deviceKey === 'windows' ? newState : device.isOpen
-          }
-        };
-        setDevices(newDevices);
-        StorageUtils.saveDeviceSettings(newDevices);
-        
-        // Mostrar confirmación
-        Alert.alert(
-          'Control exitoso',
-          `${device.name} ${newState ? 'activado' : 'desactivado'} correctamente`,
-          [{ text: 'OK' }],
-          { userInterfaceStyle: isDark ? 'dark' : 'light' }
-        );
-        
-      } catch (error) {
-        console.error('Error al controlar dispositivo real:', error);
-        Alert.alert(
-          'Error de control',
-          `No se pudo controlar ${device.name}. Modo simulado activado.`,
-          [{ text: 'OK' }],
-          { userInterfaceStyle: isDark ? 'dark' : 'light' }
-        );
-        
-        // Continuar con simulación si falla el control real
-        updateDeviceLocally(deviceKey, newState);
-      }
-    } else {
-      // Dispositivo simulado
-      updateDeviceLocally(deviceKey, newState);
     }
   };
 
@@ -530,14 +482,15 @@ const DashboardScreen = () => {
     return ColorHelpers.getAlertColor(type, theme);
   };
 
-  const handleSensorIdsChange = (newSensorIds) => {
-    setActiveSensorIds(newSensorIds);
-    // Guardar la configuración de sensores activos
+  // Cambiar sensores activos usando macAddress
+  const handleSensorIdsChange = (newSensorMacs) => {
+    setActiveSensorIds(newSensorMacs);
+    // Guardar la configuración de sensores activos (macAddress)
     StorageUtils.saveUserPreferences({
       ...userPreferences,
-      activeSensorIds: newSensorIds
+      activeSensorIds: newSensorMacs
     });
-  };
+  }
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -1305,4 +1258,5 @@ const createStyles = (theme, responsiveConfig) => {
   });
 };
 
+}
 export default DashboardScreen;

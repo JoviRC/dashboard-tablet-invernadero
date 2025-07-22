@@ -1,7 +1,10 @@
 // Configuración de la aplicación
 export const CONFIG = {
   // URL base de la API
-  API_BASE_URL: 'http://192.168.100.17:4201',
+  API_BASE_URLS: [
+    'http://autoindoor.duckdns.org:4201',
+    'http://192.168.100.17:4201'
+  ],
   
   // ID del usuario por defecto para pruebas
   DEFAULT_USER_ID: 1,
@@ -38,6 +41,18 @@ export const CONFIG = {
       max: 14,
       ideal: { min: 6.0, max: 7.5 },
       unit: 'pH'
+    },
+    soilSalinity: {
+      min: 0,
+      max: 800,
+      ideal: { min: 0, max: 800 },
+      unit: 'ppm'
+    },
+    ledStatus: {
+      min: 0,
+      max: 1,
+      ideal: { min: 0, max: 1 },
+      unit: 'on/off'
     }
   },
   

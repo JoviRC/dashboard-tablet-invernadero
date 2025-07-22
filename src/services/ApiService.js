@@ -1,30 +1,93 @@
 // Servicio para manejar las llamadas a la API del invernadero
 import CONFIG from '../config/config';
+// Utilidad para almacenamiento local (web y móvil)
+let storage;
+try {
+  storage = window.localStorage;
+} catch {
+  try {
+    storage = require('@react-native-async-storage/async-storage').default;
+  } catch {
+    storage = null;
+  }
+}
+
+const STORAGE_KEY = 'API_BASE_URL_SELECTED';
+
+async function getStoredApiUrl() {
+  if (!storage) return null;
+  if (storage.getItem) {
+    return storage.getItem(STORAGE_KEY);
+  } else if (storage.getItemAsync) {
+    return await storage.getItemAsync(STORAGE_KEY);
+  }
+  return null;
+}
+
+async function setStoredApiUrl(url) {
+  if (!storage) return;
+  if (storage.setItem) {
+    storage.setItem(STORAGE_KEY, url);
+  } else if (storage.setItemAsync) {
+    await storage.setItemAsync(STORAGE_KEY, url);
+  }
+}
+
+// Detecta automáticamente la IP funcional y la recuerda
+async function fetchWithAutoIp(path, options = {}) {
+  let apiUrl = await getStoredApiUrl();
+  const urlsToTry = apiUrl ? [apiUrl, ...CONFIG.API_BASE_URLS.filter(u => u !== apiUrl)] : CONFIG.API_BASE_URLS;
+  let lastError;
+  for (const url of urlsToTry) {
+    try {
+      // Mostrar el curl equivalente en terminal
+      const fullUrl = `${url}${path}`;
+      let curl = `curl -X ${options?.method || 'GET'} '${fullUrl}'`;
+      if (options?.headers) {
+        Object.entries(options.headers).forEach(([k, v]) => {
+          curl += ` -H '${k}: ${v}'`;
+        });
+      }
+      if (options?.body) {
+        curl += ` -d '${typeof options.body === 'string' ? options.body : JSON.stringify(options.body)}'`;
+      }
+      console.log(`🌀 [CURL] ${curl}`);
+      const response = await fetch(fullUrl, options);
+      if (response.ok) {
+        await setStoredApiUrl(url);
+        return response;
+      }
+      lastError = new Error(`Error HTTP: ${response.status} (${url})`);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('No se pudo conectar a ninguna API');
+}
 import { sensorData as fallbackSensorData, deviceStates as fallbackDeviceStates } from '../data/mockData';
 
-const API_BASE_URL = CONFIG.API_BASE_URL;
+const API_BASE_URLS = CONFIG.API_BASE_URLS;
 
+// Helper para intentar fetch en múltiples URLs (redirige a lógica de IP automática)
+async function fetchWithFallback(path, options = {}) {
+  // Redirigir a la lógica principal de selección de IP
+  return await fetchWithAutoIp(path, options);
+}
 const apiService = {
   // Obtener dispositivos del usuario
   async getDispositivosForUser(userId = 1) {
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/ControllerDHT11/GetDispositivosForUser?user=${userId}`,
-        {
-          method: 'GET',
-          headers: {
-            'accept': '*/*',
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Error HTTP: ${response.status}`);
-      }
-
+      const response = await fetchWithAutoIp(`/ControllerDHT11/GetDispositivosForUser?user=${userId}`, {
+        method: 'GET',
+        headers: {
+          'accept': '*/*',
+          'Content-Type': 'application/json',
+        },
+      });
       const data = await response.json();
       console.log('Datos recibidos de la API:', data);
+      // Guardar la lista de dispositivos para búsquedas posteriores
+      apiService._lastDevicesList = Array.isArray(data) ? data : [];
       return data;
     } catch (error) {
       console.error('Error al obtener dispositivos:', error);
@@ -35,23 +98,52 @@ const apiService = {
   // Obtener datos específicos de un sensor por ID
   async getSensorData(sensorId, segundos = 1) {
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/ControllerDHT11/GetTemperaturaSegundos?segundos=${segundos}&idSensor=${sensorId}`,
-        {
-          method: 'GET',
-          headers: {
-            'accept': '*/*',
-            'Content-Type': 'application/json',
-          },
+      // Si sensorId es un objeto, usar macAddress
+      let macAddress = null;
+      if (typeof sensorId === 'object' && sensorId.macAddress) {
+        macAddress = sensorId.macAddress;
+      } else if (typeof sensorId === 'string' && sensorId.length > 0) {
+        macAddress = sensorId;
+      } else if (typeof sensorId === 'number') {
+        // Buscar el objeto sensor en la lista global de dispositivos y extraer el macAddress
+        if (this._lastDevicesList && Array.isArray(this._lastDevicesList)) {
+          const found = this._lastDevicesList.find(dev => dev.id === sensorId || dev.idSensor === sensorId);
+          if (found && found.macAddress) {
+            macAddress = found.macAddress;
+          }
         }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Error HTTP: ${response.status}`);
+        if (!macAddress) {
+          console.warn(`No se encontró macAddress para el id numérico ${sensorId}. No se realiza petición.`);
+          return null;
+        }
       }
-
-      const data = await response.json();
-      console.log(`Datos del sensor ${sensorId}:`, data);
+      if (macAddress) macAddress = String(macAddress).trim();
+      else {
+        console.warn(`No se pudo determinar macAddress para sensorId:`, sensorId);
+        return null;
+      }
+      // El endpoint requiere idSensor=<macAddress>
+      const response = await fetchWithAutoIp(`/ControllerDHT11/GetTemperaturaSegundos?segundos=${segundos}&idSensor=${macAddress}`, {
+        method: 'GET',
+        headers: {
+          'accept': '*/*',
+          'Content-Type': 'application/json',
+        },
+      });
+      // Verificar si la respuesta está vacía o no es JSON
+      const text = await response.text();
+      if (!text || text.trim() === '') {
+        console.warn(`Respuesta vacía al obtener datos del sensor ${macAddress}. Usando datos de respaldo.`);
+        return null;
+      }
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (jsonError) {
+        console.error(`Respuesta inválida (no JSON) para sensor ${macAddress}:`, text);
+        return null;
+      }
+      console.log(`Datos del sensor ${macAddress}:`, data);
       return data;
     } catch (error) {
       console.error(`Error al obtener datos del sensor ${sensorId}:`, error);
@@ -66,34 +158,21 @@ const apiService = {
       return [];
     }
 
-    const sensorIds = [];
-    
+    const sensorMacs = [];
     apiData.forEach(device => {
-      // Buscar dispositivos que tengan "Sensor" en el nombre
       const deviceName = (device.nombre || device.name || '').toLowerCase();
-      
       if (deviceName.includes('sensor')) {
-        let sensorId = null;
-        
-        // Verificar propiedades comunes donde puede estar el ID del sensor
-        if (device.idSensor || device.idsensor || device.sensorId) {
-          sensorId = device.idSensor || device.idsensor || device.sensorId;
-        } else if (device.id) {
-          sensorId = device.id;
-        } else if (device.codigo && !isNaN(parseInt(device.codigo))) {
-          sensorId = parseInt(device.codigo);
-        }
-        
-        // Agregar el sensor ID si es válido y no está duplicado
-        if (sensorId && !isNaN(parseInt(sensorId)) && !sensorIds.includes(parseInt(sensorId))) {
-          sensorIds.push(parseInt(sensorId));
-          console.log(`Sensor encontrado: ID ${sensorId} - Nombre: ${device.nombre || device.name || 'Sin nombre'}`);
+        // Usar el macAddress como identificador para los requests
+        let macAddress = device.macAddress || device.macaddress || device.mac || null;
+        if (macAddress) macAddress = macAddress.trim();
+        if (macAddress && !sensorMacs.includes(macAddress)) {
+          sensorMacs.push(macAddress);
+          console.log(`Sensor encontrado: macAddress ${macAddress} - Nombre: ${device.nombre || device.name || 'Sin nombre'}`);
         }
       }
     });
-
-    console.log('IDs de sensores extraídos:', sensorIds);
-    return sensorIds;
+    console.log('macAddress de sensores extraídos:', sensorMacs);
+    return sensorMacs;
   },
 
   // Extraer información de switches desde la respuesta de GetDispositivosForUser
@@ -210,23 +289,13 @@ const apiService = {
   // Controlar un switch (encender/apagar)
   async controlSwitch(switchId, newState) {
     try {
-      // Aquí necesitarías el endpoint específico para controlar switches
-      // Por ahora simulo la estructura, deberás ajustar según tu API
-      const response = await fetch(
-        `${API_BASE_URL}/ControllerSwitch/SetSwitch?id=${switchId}&estado=${newState ? 1 : 0}`,
-        {
-          method: 'POST', // o PUT según tu API
-          headers: {
-            'accept': '*/*',
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Error HTTP: ${response.status}`);
-      }
-
+      const response = await fetchWithAutoIp(`/ControllerSwitch/SetSwitch?id=${switchId}&estado=${newState ? 1 : 0}`, {
+        method: 'POST',
+        headers: {
+          'accept': '*/*',
+          'Content-Type': 'application/json',
+        },
+      });
       const data = await response.json();
       console.log(`Switch ${switchId} controlado. Nuevo estado: ${newState}`, data);
       return data;
@@ -239,9 +308,14 @@ const apiService = {
   // Obtener datos de múltiples sensores
   async getMultipleSensorsData(sensorIds, segundos = 1) {
     try {
-      const promises = sensorIds.map(sensorId => 
-        this.getSensorData(sensorId, segundos)
-      );
+      // sensorIds puede ser array de objetos, usar macAddress
+      const promises = sensorIds.map(sensorObj => {
+        let macAddress = sensorObj;
+        if (typeof sensorObj === 'object' && sensorObj.macAddress) {
+          macAddress = sensorObj.macAddress;
+        }
+        return this.getSensorData(macAddress, segundos);
+      });
       
       const results = await Promise.allSettled(promises);
       
@@ -251,12 +325,12 @@ const apiService = {
       results.forEach((result, index) => {
         if (result.status === 'fulfilled') {
           successfulResults.push({
-            sensorId: sensorIds[index],
+            sensorId: typeof sensorIds[index] === 'object' ? sensorIds[index].macAddress : sensorIds[index],
             data: result.value
           });
         } else {
           errors.push({
-            sensorId: sensorIds[index],
+            sensorId: typeof sensorIds[index] === 'object' ? sensorIds[index].macAddress : sensorIds[index],
             error: result.reason
           });
         }
@@ -471,106 +545,37 @@ const apiService = {
 
     // Mapear los datos del sensor al formato esperado
     const transformedData = {
-      sensorId: apiData.idsensor || sensorId,
-      timestamp: new Date(apiData.fecha),
+      sensorId: apiData.idsensor || apiData.id || sensorId,
+      timestamp: apiData.fecha ? new Date(apiData.fecha) : new Date(),
       temperature: {
-        current: parseFloat(apiData.temperatura) || 0,
+        current: typeof apiData.temperatura === 'number' ? apiData.temperatura : parseFloat(apiData.temperatura) || null,
         unit: '°C'
       },
       airHumidity: {
-        current: parseFloat(apiData.humedad) || 0,
+        current: typeof apiData.humedad === 'number' ? apiData.humedad : parseFloat(apiData.humedad) || null,
         unit: '%'
       },
       soilHumidity: {
-        current: apiService.convertSoilHumidityToPercentage(parseFloat(apiData.humedadSuelo) || 0),
+        current: apiData.humedadSuelo !== undefined ? apiService.convertSoilHumidityToPercentage(parseFloat(apiData.humedadSuelo)) : null,
         unit: '%'
       },
       soilSalinity: {
-        // OPCIÓN 1: Si apiData.salinidadSuelo ya viene en ppm (valor directo del sensor)
-        current: parseFloat(apiData.salinidadSuelo) || 0,
-        
-        // OPCIÓN 2: Si apiData.salinidadSuelo es un valor analógico que necesita conversión
-        // current: ApiService.convertConductivityToSalinity(
-        //   parseFloat(apiData.salinidadSuelo) || 0,
-        //   parseFloat(apiData.temperatura) || 25
-        // ),
-        
-        unit: 'ppm', // partes por millón típicamente
-        
-        // Logging detallado para análisis
-        rawValue: apiData.salinidadSuelo, // Valor original sin procesar
-        analysisInfo: (() => {
-          const rawVal = parseFloat(apiData.salinidadSuelo) || 0;
-          console.log(`🔬 ANÁLISIS SALINIDAD - Sensor ${sensorId}:`);
-          console.log(`   📊 Valor crudo: ${apiData.salinidadSuelo} (tipo: ${typeof apiData.salinidadSuelo})`);
-          console.log(`   🔢 Valor parseado: ${rawVal}`);
-          console.log(`   📏 Rango estimado:`);
-          if (rawVal < 10) console.log(`      → Probablemente ya en ppm (muy bajo)`);
-          else if (rawVal < 100) console.log(`      → Probablemente ppm o EC convertido`);
-          else if (rawVal < 1000) console.log(`      → Podría ser ppm, EC μS/cm, o analógico`);
-          else console.log(`      → Probablemente valor analógico (0-1023 o 0-4095)`);
-          
-          return { raw: apiData.salinidadSuelo, parsed: rawVal };
-        })()
+        current: typeof apiData.salinidadSuelo === 'number' ? apiData.salinidadSuelo : parseFloat(apiData.salinidadSuelo) || null,
+        unit: 'ppm',
+        rawValue: apiData.salinidadSuelo
       },
-      // Agregar pH - directo del sensor O calculado por otros parámetros
-      soilPH: (() => {
-        // Si hay datos directos de pH del sensor, usarlos
-        if (apiData.ph && parseFloat(apiData.ph) > 0) {
-          const directPH = parseFloat(apiData.ph);
-          console.log(`🧪 pH DIRECTO del sensor: ${directPH}`);
-          return {
-            current: directPH,
-            unit: 'pH',
-            method: 'sensor_directo',
-            isCalculated: false
-          };
-        }
-        
-        // Si no hay sensor de pH, calcularlo usando otros parámetros
-        const salinityValue = parseFloat(apiData.salinidadSuelo) || 0;
-        const soilHumidityAnalog = parseFloat(apiData.humedadSuelo) || 2000;
-        const temperature = parseFloat(apiData.temperatura) || 25;
-        
-        // Convertir humedad analógica a porcentaje
-        const soilMoisturePercent = apiService.convertSoilHumidityToPercentage(soilHumidityAnalog);
-        
-        let calculatedPH;
-        let method;
-        
-        if (salinityValue > 0) {
-          // Método avanzado si tenemos salinidad
-          calculatedPH = apiService.calculatePHFromMultipleFactors(
-            salinityValue, 
-            soilMoisturePercent, 
-            temperature
-          );
-          method = 'multi_factor';
-          console.log(`🧪 pH CALCULADO (multi-factor): ${calculatedPH} (sal: ${salinityValue}, hum: ${soilMoisturePercent}%, temp: ${temperature}°C)`);
-        } else {
-          // Método simple basado solo en humedad y temperatura
-          calculatedPH = 7.0 + (soilMoisturePercent - 50) * 0.002 + (25 - temperature) * 0.01;
-          calculatedPH = Math.max(5.5, Math.min(7.5, calculatedPH));
-          method = 'humedad_temperatura';
-          console.log(`🧪 pH CALCULADO (simple): ${calculatedPH} (hum: ${soilMoisturePercent}%, temp: ${temperature}°C)`);
-        }
-        
-        return {
-          current: Math.round(calculatedPH * 10) / 10,
-          unit: 'pH',
-          method: method,
-          isCalculated: true,
-          calculationInputs: {
-            salinity: salinityValue,
-            soilMoisture: soilMoisturePercent,
-            temperature: temperature
-          }
-        };
-      })(),
+      soilPH: {
+        current: null,
+        unit: 'pH',
+        method: 'none',
+        isCalculated: false
+      },
       ledStatus: {
         blue: apiData.ledAzul === "1" || apiData.ledAzul === true
       }
     };
+
+    // Si en el futuro el endpoint retorna pH, se puede mapear aquí
 
     console.log(`Datos transformados del sensor ${sensorId}:`, transformedData);
     return transformedData;
@@ -579,127 +584,50 @@ const apiService = {
   // Transformar múltiples sensores al formato del dashboard
   transformMultipleSensorsToDisplay: (sensorsData) => {
     if (!Array.isArray(sensorsData) || sensorsData.length === 0) {
-      console.log('No hay datos de sensores para transformar, usando datos de respaldo');
-      return fallbackSensorData;
+      console.log('No hay datos de sensores para mostrar.');
+      return {};
     }
 
     console.log('Transformando datos de sensores para display:', sensorsData);
 
-    // Usar datos de respaldo como base
-    const displayData = { ...fallbackSensorData };
-    
-    // Procesar cada sensor y actualizar los datos correspondientes
+    // Solo mostrar datos reales obtenidos del API
+    const displayData = {};
+
     sensorsData.forEach(({ sensorId, data }) => {
-      console.log(`Procesando sensor ${sensorId} con datos:`, data);
-      
       const transformed = apiService.transformSensorApiData(data, sensorId);
+      // Usar el macAddress real como clave si existe
+      const key = transformed && transformed.sensorId ? transformed.sensorId : sensorId;
       if (transformed) {
-        console.log(`Datos transformados para sensor ${sensorId}:`, transformed);
-        
-        // Actualizar datos de temperatura
-        if (transformed.temperature) {
-          displayData.temperature.current = transformed.temperature.current;
-          displayData.temperature.lastUpdate = transformed.timestamp;
-          displayData.temperature.sensorId = sensorId;
-          displayData.temperature.isReal = true;
-          displayData.temperature.name = 'Temperatura Ambiente';
-          console.log(`Temperatura actualizada: ${transformed.temperature.current}°C`);
-        }
-        
-        // Actualizar humedad del aire
-        if (transformed.airHumidity) {
-          displayData.airHumidity.current = transformed.airHumidity.current;
-          displayData.airHumidity.lastUpdate = transformed.timestamp;
-          displayData.airHumidity.sensorId = sensorId;
-          displayData.airHumidity.isReal = true;
-          displayData.airHumidity.name = 'Humedad del Aire';
-          console.log(`Humedad del aire actualizada: ${transformed.airHumidity.current}%`);
-        }
-        
-        // Actualizar humedad del suelo
-        if (transformed.soilHumidity) {
-          displayData.soilHumidity.current = transformed.soilHumidity.current;
-          displayData.soilHumidity.lastUpdate = transformed.timestamp;
-          displayData.soilHumidity.sensorId = sensorId;
-          displayData.soilHumidity.isReal = true;
-          displayData.soilHumidity.name = 'Humedad del Suelo';
-          console.log(`Humedad del suelo actualizada: ${transformed.soilHumidity.current}`);
-        }
-        
-        // Actualizar salinidad del suelo
-        if (transformed.soilSalinity) {
-          if (!displayData.soilSalinity) {
-            displayData.soilSalinity = {
-              current: 0,
-              unit: 'ppm',
-              ideal: { min: 0, max: 500 },
-              history: [],
-              name: 'Salinidad del Suelo'
-            };
-          }
-          displayData.soilSalinity.current = transformed.soilSalinity.current;
-          displayData.soilSalinity.lastUpdate = transformed.timestamp;
-          displayData.soilSalinity.sensorId = sensorId;
-          displayData.soilSalinity.isReal = true;
-          
-          // Logging detallado para análisis de salinidad
-          console.log(`📈 SALINIDAD ACTUALIZADA - Sensor ${sensorId}:`);
-          console.log(`   💧 Valor mostrado: ${transformed.soilSalinity.current} ppm`);
-          if (transformed.soilSalinity.rawValue !== undefined) {
-            console.log(`   🔍 Valor crudo original: ${transformed.soilSalinity.rawValue}`);
-          }
-          if (transformed.soilSalinity.analysisInfo) {
-            console.log(`   📊 Información de análisis:`, transformed.soilSalinity.analysisInfo);
-          }
-          
-          // Interpretación del valor
-          const interpretation = apiService.interpretSalinityLevel(transformed.soilSalinity.current);
-          console.log(`   ⚠️  Nivel interpretado: ${interpretation.level} - ${interpretation.message}`);
-        }
-        
-        // Actualizar pH del suelo (sensor directo o calculado)
-        if (transformed.soilPH) {
-          displayData.soilPH.current = transformed.soilPH.current;
-          displayData.soilPH.lastUpdate = transformed.timestamp;
-          displayData.soilPH.sensorId = sensorId;
-          // Marcar como real si viene de sensor directo O si está calculado con datos reales de sensores
-          displayData.soilPH.isReal = true; // Siempre real porque usa datos de sensores reales
-          displayData.soilPH.name = 'pH del Suelo';
-          
-          // Logging detallado para pH
-          console.log(`🧪 pH DEL SUELO ACTUALIZADO - Sensor ${sensorId}:`);
-          console.log(`   📊 Valor: ${transformed.soilPH.current} pH`);
-          console.log(`   🔬 Método: ${transformed.soilPH.method}`);
-          console.log(`   ${transformed.soilPH.isCalculated ? '🧮 CALCULADO con datos reales' : '📡 SENSOR DIRECTO'}`);
-          
-          if (transformed.soilPH.isCalculated && transformed.soilPH.calculationInputs) {
-            console.log(`   📥 Inputs de cálculo:`, transformed.soilPH.calculationInputs);
-          }
-          
-          // Interpretación del nivel de pH
-          const phInterpretation = apiService.interpretPHLevel(transformed.soilPH.current);
-          console.log(`   ⚠️  Nivel pH: ${phInterpretation.level} - ${phInterpretation.message}`);
-          
-          // Marcar si es calculado en el objeto de datos
-          displayData.soilPH.isCalculated = transformed.soilPH.isCalculated;
-          displayData.soilPH.calculationMethod = transformed.soilPH.method;
-        }
-        
-        // Actualizar historial para todos los sensores que recibieron datos reales
-        ['temperature', 'airHumidity', 'soilHumidity', 'soilSalinity', 'soilPH'].forEach(sensorType => {
-          if (displayData[sensorType] && displayData[sensorType].isReal) {
-            if (!displayData[sensorType].history) {
-              displayData[sensorType].history = [];
-            }
-            // Mantener solo los últimos 10 valores
-            displayData[sensorType].history = [
-              ...displayData[sensorType].history.slice(-9),
-              displayData[sensorType].current
-            ];
-          }
+        displayData[key] = transformed;
+      } else {
+        // Si no hay datos, retornar estructura vacía para ese sensorId, usando todos los keys de SENSOR_DEFAULTS
+        const { SENSOR_DEFAULTS } = require('../config/config').CONFIG;
+        const emptySensor = { sensorId: key };
+        Object.entries(SENSOR_DEFAULTS).forEach(([k, defaults]) => {
+          emptySensor[k] = {
+            current: null,
+            min: defaults.min,
+            max: defaults.max,
+            ideal: defaults.ideal,
+            unit: defaults.unit,
+            history: [],
+            deviceId: null,
+            macAddress: null
+          };
         });
+        // ledStatus puede tener estructura especial (ejemplo: blue)
+        if (emptySensor.ledStatus) {
+          emptySensor.ledStatus.blue = null;
+        }
+        displayData[key] = emptySensor;
       }
     });
+
+    // Si no hay datos transformados, retornar objeto vacío para evitar errores en el render
+    if (Object.keys(displayData).length === 0) {
+      console.log('No hay datos transformados para mostrar. Retornando objeto vacío.');
+      return {};
+    }
 
     console.log('Datos finales para display:', displayData);
     return displayData;
