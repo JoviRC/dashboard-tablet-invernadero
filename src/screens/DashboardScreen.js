@@ -26,7 +26,7 @@ import RealTimeStatus from '../components/RealTimeStatus';
 import ConnectionStatus from '../components/ConnectionStatus';
 import ThemeSelector from '../components/ThemeSelector';
 import DataModeBanner from '../components/DataModeBanner';
-import ApiService from '../services/ApiService';
+import ApiService, { getSensorStatus } from '../services/ApiService';
 import NotificationService from '../services/NotificationService';
 import StorageUtils from '../utils/storage';
 import { sensorData as fallbackSensorData, deviceStates as fallbackDeviceStates } from '../data/mockData';
@@ -114,10 +114,10 @@ const DashboardScreen = () => {
 
     initializeApp();
     
-    // Actualizar datos cada 30 segundos (o según preferencias del usuario)
+    // Actualizar datos cada 5 segundos
     const interval = setInterval(() => {
       loadSensorData(); // Solo actualizar datos de sensores en el intervalo
-    }, userPreferences.refreshInterval || 30000);
+    }, 5000);
 
     return () => {
       clearInterval(interval);
@@ -333,78 +333,37 @@ const DashboardScreen = () => {
     // Solo cargar si hay sensores activos
     if (activeSensorIds.length === 0) {
       console.log('⚠️ No hay sensores activos configurados - intentando detectar automáticamente...');
-      // Intentar cargar dispositivos para detectar sensores
       await loadDataFromAPI(false);
       return;
     }
-    
-    try {
-      console.log('🔄 Cargando datos REALES de sensores:', activeSensorIds);
-      
-      // Obtener datos de todos los sensores activos con timeout
-      const sensorsData = await ApiService.getMultipleSensorsData(activeSensorIds, 1);
-      
-      if (sensorsData && sensorsData.length > 0) {
-        console.log(`✅ Datos recibidos de ${sensorsData.length} sensores`);
-        
-        // Transformar datos al formato del dashboard - SOLO DATOS REALES
-        const transformedSensorData = ApiService.transformMultipleSensorsToDisplay(sensorsData);
-        
-        // Marcar explícitamente todos los sensores como reales
-        Object.keys(transformedSensorData).forEach(sensorKey => {
-          if (transformedSensorData[sensorKey].isReal) {
-            transformedSensorData[sensorKey].isReal = true;
-            transformedSensorData[sensorKey].lastUpdate = new Date();
-            transformedSensorData[sensorKey].source = 'API_REAL';
-            console.log(`📊 ${sensorKey}: ${transformedSensorData[sensorKey].current}${transformedSensorData[sensorKey].unit} (REAL)`);
-          }
-        });
-        
-        setSensors(transformedSensorData);
-        
-        // Guardar historial de sensores en localStorage
-        StorageUtils.saveSensorHistory(transformedSensorData);
-        
-        // Generar alertas basadas en los datos actualizados de sensores
-        const generatedAlerts = ApiService.generateAlertsFromSensorData(transformedSensorData);
-        
-        // Filtrar alertas que ya han sido descartadas por el usuario
-        const filteredAlerts = StorageUtils.filterDismissedAlerts(generatedAlerts);
-        setCurrentAlerts(filteredAlerts);
-        
-        console.log('📈 Datos de sensores REALES actualizados correctamente');
-        
-        // Marcar como conectado si al menos un sensor responde
-        setApiConnected(true);
     try {
       console.log('🔄 Cargando datos REALES de sensores (macAddress):', activeSensorIds);
-      // Obtener datos de todos los sensores activos usando macAddress
       const sensorsData = await ApiService.getMultipleSensorsData(activeSensorIds, 1);
       if (sensorsData && sensorsData.length > 0) {
         console.log(`✅ Datos recibidos de ${sensorsData.length} sensores (macAddress)`);
-        // Transformar datos al formato del dashboard - SOLO DATOS REALES
         const transformedSensorData = ApiService.transformMultipleSensorsToDisplay(sensorsData);
-        // Marcar explícitamente todos los sensores como reales
-        Object.keys(transformedSensorData).forEach(macAddress => {
-          if (transformedSensorData[macAddress].isReal) {
-            transformedSensorData[macAddress].isReal = true;
-            transformedSensorData[macAddress].lastUpdate = new Date();
-            transformedSensorData[macAddress].source = 'API_REAL';
-            console.log(`📊 ${macAddress}: ${transformedSensorData[macAddress].current}${transformedSensorData[macAddress].unit} (REAL)`);
-          }
+        // Mapear datos reales a las claves esperadas por el dashboard
+        const mappedSensors = { ...fallbackSensorData };
+        Object.values(transformedSensorData).forEach(sensorObj => {
+          if (sensorObj.temperature) mappedSensors.temperature = { ...mappedSensors.temperature, ...sensorObj.temperature, isReal: true, lastUpdate: new Date(), source: 'API_REAL' };
+          if (sensorObj.airHumidity) mappedSensors.airHumidity = { ...mappedSensors.airHumidity, ...sensorObj.airHumidity, isReal: true, lastUpdate: new Date(), source: 'API_REAL' };
+          if (sensorObj.soilHumidity) mappedSensors.soilHumidity = { ...mappedSensors.soilHumidity, ...sensorObj.soilHumidity, isReal: true, lastUpdate: new Date(), source: 'API_REAL' };
+          if (sensorObj.soilPH) mappedSensors.soilPH = { ...mappedSensors.soilPH, ...sensorObj.soilPH, isReal: true, lastUpdate: new Date(), source: 'API_REAL' };
+          if (sensorObj.soilSalinity) mappedSensors.soilSalinity = { ...mappedSensors.soilSalinity, ...sensorObj.soilSalinity, isReal: true, lastUpdate: new Date(), source: 'API_REAL' };
         });
-        setSensors(transformedSensorData);
-        // Guardar historial de sensores en localStorage
-        StorageUtils.saveSensorHistory(transformedSensorData);
-        // Generar alertas basadas en los datos actualizados de sensores
-        const generatedAlerts = ApiService.generateAlertsFromSensorData(transformedSensorData);
-        // Filtrar alertas que ya han sido descartadas por el usuario
+        setSensors(mappedSensors);
+        StorageUtils.saveSensorHistory(mappedSensors);
+        const generatedAlerts = ApiService.generateAlertsFromSensorData(mappedSensors);
         const filteredAlerts = StorageUtils.filterDismissedAlerts(generatedAlerts);
         setCurrentAlerts(filteredAlerts);
-        console.log('📈 Datos de sensores REALES actualizados correctamente (macAddress)');
-        // Marcar como conectado si al menos un sensor responde
+        console.log('📈 Datos de sensores REALES actualizados correctamente (dashboard keys)');
         setApiConnected(true);
         setLastUpdate(new Date());
+        
+        // Evaluar control automático después de actualizar sensores
+        setTimeout(() => {
+          evaluateAutomaticControl();
+        }, 1000); // Pequeño delay para asegurar que el estado se actualice
       } else {
         console.warn('⚠️ No se recibieron datos de sensores - usando datos de respaldo');
         setApiConnected(false);
@@ -412,7 +371,6 @@ const DashboardScreen = () => {
     } catch (error) {
       console.error('❌ Error al cargar datos específicos de sensores:', error);
       setApiConnected(false);
-      // Mostrar estado de desconexión pero mantener últimos datos
       console.warn('🔄 Manteniendo últimos datos conocidos debido a error de conexión');
     }
   };
@@ -430,18 +388,135 @@ const DashboardScreen = () => {
     StorageUtils.saveDeviceSettings(newDevices);
   };
 
-  const handleAutomaticToggle = (deviceKey) => {
+  const handleAutomaticToggle = async (deviceKey) => {
+    const newAutomaticState = !devices[deviceKey].isAutomatic;
+    
+    console.log(`🤖 Cambiando modo automático de ${deviceKey}: ${newAutomaticState ? 'ACTIVAR' : 'DESACTIVAR'}`);
+
     const newDevices = {
       ...devices,
       [deviceKey]: {
         ...devices[deviceKey],
-        isAutomatic: !devices[deviceKey].isAutomatic
+        isAutomatic: newAutomaticState
       }
     };
     setDevices(newDevices);
     
     // Guardar configuración de dispositivos
     StorageUtils.saveDeviceSettings(newDevices);
+
+    // Si se activa el modo automático para ventilación, hacer una demostración
+    if (deviceKey === 'ventilation' && newAutomaticState) {
+      try {
+        console.log('🌀 Modo automático de ventilación ACTIVADO - Realizando verificación de dispositivos...');
+        
+        // Obtener dispositivos para verificar que hay switches disponibles
+        const devicesData = await ApiService.getDispositivosForUser(1);
+        const switches = ApiService.extractSwitchesInfo(devicesData || []);
+        
+        if (switches.length > 0) {
+          console.log(`✅ Encontrados ${switches.length} switches para control automático:`, 
+            switches.map(s => `${s.name} (${s.macAddress})`));
+        } else {
+          console.warn('⚠️ No se encontraron switches para control automático');
+        }
+      } catch (error) {
+        console.error('❌ Error al verificar dispositivos para modo automático:', error);
+      }
+    }
+  };
+
+  // Manejar encendido/apagado manual de dispositivos
+  const handleDeviceToggle = async (deviceKey) => {
+    try {
+      const newState = deviceKey === 'windows' ? !devices[deviceKey].isOpen : !devices[deviceKey].isActive;
+      
+      console.log(`🎛️ Control manual de ${deviceKey}: ${newState ? 'ENCENDER' : 'APAGAR'}`);
+
+      // Si es ventilación y tiene control automático activado, usar la API de Tuya
+      if (deviceKey === 'ventilation' && devices[deviceKey].isAutomatic) {
+        console.log('🌀 Utilizando control automático del ventilador via Tuya API...');
+        
+        try {
+          const result = await ApiService.controlVentilatorAutomatic(newState, 1); // userId = 1 por defecto
+          
+          if (result.success) {
+            console.log(`✅ Ventilador controlado exitosamente: ${result.successCount} dispositivos`);
+            
+            // Actualizar estado local
+            updateDeviceLocally(deviceKey, newState);
+            
+            // Mostrar notificación de éxito
+            console.log(`🎉 Control automático exitoso: ${result.message}`);
+          } else {
+            console.warn(`⚠️ Control automático falló: ${result.message}`);
+            
+            // Aún así actualizar el estado local para UX
+            updateDeviceLocally(deviceKey, newState);
+          }
+        } catch (error) {
+          console.error('❌ Error en control automático del ventilador:', error);
+          
+          // Fallback: actualizar solo el estado local
+          updateDeviceLocally(deviceKey, newState);
+        }
+      } else {
+        // Para otros dispositivos o ventilación sin control automático, solo actualizar localmente
+        console.log(`📱 Actualizando solo estado local para ${deviceKey}`);
+        updateDeviceLocally(deviceKey, newState);
+      }
+    } catch (error) {
+      console.error(`❌ Error al controlar dispositivo ${deviceKey}:`, error);
+    }
+  };
+
+  // Evaluar y ejecutar control automático basado en condiciones de sensores
+  const evaluateAutomaticControl = async () => {
+    try {
+      // Solo ejecutar si el ventilador tiene modo automático activado
+      if (!devices.ventilation.isAutomatic) {
+        return;
+      }
+
+      // Obtener temperatura actual
+      const currentTemp = sensors.temperature?.current;
+      const idealTempMax = sensors.temperature?.ideal?.max || 25;
+      
+      if (typeof currentTemp === 'number') {
+        console.log(`🌡️ Evaluando control automático: Temp actual ${currentTemp}°C vs máximo ideal ${idealTempMax}°C`);
+        
+        // Si la temperatura está por encima del ideal, encender ventilador
+        if (currentTemp > idealTempMax && !devices.ventilation.isActive) {
+          console.log('🔥 Temperatura alta detectada - Encendiendo ventilador automáticamente');
+          
+          try {
+            const result = await ApiService.controlVentilatorAutomatic(true, 1);
+            if (result.success) {
+              updateDeviceLocally('ventilation', true);
+              console.log(`✅ Ventilador encendido automáticamente: ${result.message}`);
+            }
+          } catch (error) {
+            console.error('❌ Error al encender ventilador automáticamente:', error);
+          }
+        }
+        // Si la temperatura está en rango normal y el ventilador está encendido, apagarlo
+        else if (currentTemp <= idealTempMax - 2 && devices.ventilation.isActive) {
+          console.log('❄️ Temperatura normalizada - Apagando ventilador automáticamente');
+          
+          try {
+            const result = await ApiService.controlVentilatorAutomatic(false, 1);
+            if (result.success) {
+              updateDeviceLocally('ventilation', false);
+              console.log(`✅ Ventilador apagado automáticamente: ${result.message}`);
+            }
+          } catch (error) {
+            console.error('❌ Error al apagar ventilador automáticamente:', error);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error en evaluación de control automático:', error);
+    }
   };
 
   const handleDismissAlert = (alertId) => {
@@ -826,73 +901,74 @@ const DashboardScreen = () => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Monitoreo de Sensores</Text>
           <View style={styles.sensorsGrid}>
+
             <SensorCard
               title="Temperatura Ambiente"
-              value={sensors.temperature.current}
-              unit={sensors.temperature.unit}
-              status={getSensorStatus(sensors.temperature)}
+              value={sensors.temperature?.current ?? ''}
+              unit={sensors.temperature?.unit ?? ''}
+              status={getSensorStatus(sensors.temperature ?? {})}
               icon="thermometer-outline"
-              ideal={sensors.temperature.ideal}
-              isReal={sensors.temperature.isReal || false}
-              sensorId={sensors.temperature.sensorId}
-              lastUpdate={sensors.temperature.lastUpdate}
-              source={sensors.temperature.source || 'unknown'}
+              ideal={sensors.temperature?.ideal ?? {}}
+              isReal={sensors.temperature?.isReal || false}
+              sensorId={sensors.temperature?.sensorId ?? ''}
+              lastUpdate={sensors.temperature?.lastUpdate ?? null}
+              source={sensors.temperature?.source || 'unknown'}
               isConnected={apiConnected}
             />
             <SensorCard
               title="Humedad del Aire"
-              value={sensors.airHumidity.current}
-              unit={sensors.airHumidity.unit}
-              status={getSensorStatus(sensors.airHumidity)}
+              value={sensors.airHumidity?.current ?? ''}
+              unit={sensors.airHumidity?.unit ?? ''}
+              status={getSensorStatus(sensors.airHumidity ?? {})}
               icon="water-outline"
-              ideal={sensors.airHumidity.ideal}
-              isReal={sensors.airHumidity.isReal || false}
-              sensorId={sensors.airHumidity.sensorId}
-              lastUpdate={sensors.airHumidity.lastUpdate}
-              source={sensors.airHumidity.source || 'unknown'}
+              ideal={sensors.airHumidity?.ideal ?? {}}
+              isReal={sensors.airHumidity?.isReal || false}
+              sensorId={sensors.airHumidity?.sensorId ?? ''}
+              lastUpdate={sensors.airHumidity?.lastUpdate ?? null}
+              source={sensors.airHumidity?.source || 'unknown'}
               isConnected={apiConnected}
             />
             <SensorCard
               title="Humedad del Suelo"
-              value={sensors.soilHumidity.current}
-              unit={sensors.soilHumidity.unit}
-              status={getSensorStatus(sensors.soilHumidity)}
+              value={sensors.soilHumidity?.current ?? ''}
+              unit={sensors.soilHumidity?.unit ?? ''}
+              status={getSensorStatus(sensors.soilHumidity ?? {})}
               icon="leaf-outline"
-              ideal={sensors.soilHumidity.ideal}
-              isReal={sensors.soilHumidity.isReal || false}
-              sensorId={sensors.soilHumidity.sensorId}
-              lastUpdate={sensors.soilHumidity.lastUpdate}
-              source={sensors.soilHumidity.source || 'unknown'}
+              ideal={sensors.soilHumidity?.ideal ?? {}}
+              isReal={sensors.soilHumidity?.isReal || false}
+              sensorId={sensors.soilHumidity?.sensorId ?? ''}
+              lastUpdate={sensors.soilHumidity?.lastUpdate ?? null}
+              source={sensors.soilHumidity?.source || 'unknown'}
               isConnected={apiConnected}
             />
             {sensors.soilSalinity && (
               <SensorCard
                 title="Salinidad del Suelo"
-                value={sensors.soilSalinity.current}
-                unit={sensors.soilSalinity.unit}
-                status={getSensorStatus(sensors.soilSalinity)}
+                value={sensors.soilSalinity?.current ?? ''}
+                unit={sensors.soilSalinity?.unit ?? ''}
+                status={getSensorStatus(sensors.soilSalinity ?? {})}
                 icon="beaker-outline"
-                ideal={sensors.soilSalinity.ideal}
-                isReal={sensors.soilSalinity.isReal || false}
-                sensorId={sensors.soilSalinity.sensorId}
-                lastUpdate={sensors.soilSalinity.lastUpdate}
-                source={sensors.soilSalinity.source || 'unknown'}
+                ideal={sensors.soilSalinity?.ideal ?? {}}
+                isReal={sensors.soilSalinity?.isReal || false}
+                sensorId={sensors.soilSalinity?.sensorId ?? ''}
+                lastUpdate={sensors.soilSalinity?.lastUpdate ?? null}
+                source={sensors.soilSalinity?.source || 'unknown'}
                 isConnected={apiConnected}
               />
             )}
             <SensorCard
               title="pH del Suelo"
-              value={sensors.soilPH.current}
-              unit={sensors.soilPH.unit}
-              status={getSensorStatus(sensors.soilPH)}
+              value={sensors.soilPH?.current ?? ''}
+              unit={sensors.soilPH?.unit ?? ''}
+              status={getSensorStatus(sensors.soilPH ?? {})}
               icon="flask-outline"
-              ideal={sensors.soilPH.ideal}
-              isReal={sensors.soilPH.isReal || false}
-              sensorId={sensors.soilPH.sensorId}
-              lastUpdate={sensors.soilPH.lastUpdate}
-              isCalculated={sensors.soilPH.isCalculated}
-              calculationMethod={sensors.soilPH.calculationMethod}
-              source={sensors.soilPH.source || 'unknown'}
+              ideal={sensors.soilPH?.ideal ?? {}}
+              isReal={sensors.soilPH?.isReal || false}
+              sensorId={sensors.soilPH?.sensorId ?? ''}
+              lastUpdate={sensors.soilPH?.lastUpdate ?? null}
+              isCalculated={sensors.soilPH?.isCalculated}
+              calculationMethod={sensors.soilPH?.calculationMethod}
+              source={sensors.soilPH?.source || 'unknown'}
               isConnected={apiConnected}
             />
           </View>
@@ -1258,5 +1334,4 @@ const createStyles = (theme, responsiveConfig) => {
   });
 };
 
-}
 export default DashboardScreen;

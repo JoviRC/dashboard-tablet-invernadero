@@ -7,7 +7,9 @@ import ApiService from '../services/ApiService';
 const ApiTestComponent = () => {
   const { theme } = useTheme();
   const [testResult, setTestResult] = useState(null);
+  const [ventilatorTestResult, setVentilatorTestResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [ventilatorLoading, setVentilatorLoading] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
   const testApiConnection = async () => {
@@ -35,6 +37,38 @@ const ApiTestComponent = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const testVentilatorControl = async (action) => {
+    setVentilatorLoading(true);
+    try {
+      console.log(`Iniciando prueba de control de ventilador: ${action ? 'ENCENDER' : 'APAGAR'}...`);
+      
+      const result = await ApiService.controlVentilatorAutomatic(action, 1);
+      
+      setVentilatorTestResult({
+        success: result.success,
+        action: action ? 'ENCENDER' : 'APAGAR',
+        message: result.message,
+        controlledDevices: result.controlledDevices || [],
+        successCount: result.successCount || 0,
+        failedCount: result.failedCount || 0,
+        timestamp: new Date().toLocaleString('es-ES')
+      });
+      
+      console.log('Prueba de control de ventilador:', result);
+      
+    } catch (error) {
+      console.error('Error en prueba de control de ventilador:', error);
+      setVentilatorTestResult({
+        success: false,
+        error: error.message,
+        action: action ? 'ENCENDER' : 'APAGAR',
+        timestamp: new Date().toLocaleString('es-ES')
+      });
+    } finally {
+      setVentilatorLoading(false);
     }
   };
 
@@ -95,6 +129,47 @@ const ApiTestComponent = () => {
             </Text>
           </TouchableOpacity>
 
+          {/* Botones de prueba de control del ventilador */}
+          <View style={styles.ventilatorTestSection}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+              Control Automático del Ventilador
+            </Text>
+            
+            <View style={styles.ventilatorButtons}>
+              <TouchableOpacity
+                style={[styles.ventilatorButton, styles.onButton, { backgroundColor: ventilatorLoading ? theme.colors.disabled : theme.colors.success } ]}
+                onPress={() => testVentilatorControl(true)}
+                disabled={ventilatorLoading}
+              >
+                <Ionicons 
+                  name={ventilatorLoading ? "refresh" : "power"} 
+                  size={16} 
+                  color={theme.colors.onSuccess} 
+                  style={[styles.buttonIcon, ventilatorLoading && styles.rotating]}
+                />
+                <Text style={[styles.ventilatorButtonText, { color: theme.colors.onSuccess }]}>
+                  {ventilatorLoading ? 'Controlando...' : 'Encender'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.ventilatorButton, styles.offButton, { backgroundColor: ventilatorLoading ? theme.colors.disabled : theme.colors.error } ]}
+                onPress={() => testVentilatorControl(false)}
+                disabled={ventilatorLoading}
+              >
+                <Ionicons 
+                  name={ventilatorLoading ? "refresh" : "power-off"} 
+                  size={16} 
+                  color={theme.colors.onError} 
+                  style={[styles.buttonIcon, ventilatorLoading && styles.rotating]}
+                />
+                <Text style={[styles.ventilatorButtonText, { color: theme.colors.onError }]}>
+                  {ventilatorLoading ? 'Controlando...' : 'Apagar'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
           {testResult && (
             <View style={styles.resultContainer}>
             <View style={styles.resultHeader}>
@@ -132,6 +207,76 @@ const ApiTestComponent = () => {
                   <Text style={[styles.errorText, { color: theme.colors.error }]}>Error: {testResult.error}</Text>
                   <Text style={[styles.errorHint, { color: theme.colors.onSurfaceVariant }] }>
                     Verifica que el servidor esté ejecutándose en http://192.168.100.17:4201
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Resultado del test del ventilador */}
+          {ventilatorTestResult && (
+            <View style={[styles.resultContainer, { backgroundColor: theme.colors.surfaceVariant }]}>
+              <View style={styles.resultHeader}>
+                <Ionicons 
+                  name={ventilatorTestResult.success ? "checkmark-circle" : "close-circle"} 
+                  size={16} 
+                  color={ventilatorTestResult.success ? theme.colors.success : theme.colors.error} 
+                />
+                <Text style={[styles.resultStatus, { color: ventilatorTestResult.success ? theme.colors.success : theme.colors.error }]}>
+                  {ventilatorTestResult.success ? 
+                    `Ventilador ${ventilatorTestResult.action} Exitosamente` : 
+                    `Error al ${ventilatorTestResult.action} Ventilador`}
+                </Text>
+              </View>
+                
+              <Text style={[styles.resultTime, { color: theme.colors.onSurfaceVariant }] }>
+                Prueba realizada: {ventilatorTestResult.timestamp}
+              </Text>
+
+              {ventilatorTestResult.success ? (
+                <View style={styles.successDetails}>
+                  <Text style={[styles.deviceCountText, { color: theme.colors.text }] }>
+                    Dispositivos controlados: {ventilatorTestResult.successCount}
+                  </Text>
+                  
+                  {ventilatorTestResult.controlledDevices.length > 0 && (
+                    <ScrollView 
+                      style={styles.devicesContainer}
+                      nestedScrollEnabled={true}
+                    >
+                      {ventilatorTestResult.controlledDevices.map((device, index) => (
+                        <View key={index} style={[styles.deviceCard, { 
+                          backgroundColor: theme.colors.surface, 
+                          borderLeftColor: device.success ? theme.colors.success : theme.colors.error 
+                        }]}> 
+                          <View style={styles.deviceHeader}>
+                            <Text style={[styles.deviceName, { color: theme.colors.text }]}>
+                              {device.deviceName}
+                            </Text>
+                            <Text style={[styles.deviceId, { color: theme.colors.onSurfaceVariant, backgroundColor: theme.colors.background }]}>
+                              {device.success ? 'OK' : 'Error'}
+                            </Text>
+                          </View>
+                          <Text style={[styles.deviceDescription, { color: theme.colors.textTertiary }]}>
+                            MAC: {device.macAddress}
+                          </Text>
+                          {device.error && (
+                            <Text style={[styles.errorText, { color: theme.colors.error }]}>
+                              {device.error}
+                            </Text>
+                          )}
+                        </View>
+                      ))}
+                    </ScrollView>
+                  )}
+                </View>
+              ) : (
+                <View style={styles.errorDetails}>
+                  <Text style={[styles.errorText, { color: theme.colors.error }]}>
+                    Error: {ventilatorTestResult.error}
+                  </Text>
+                  <Text style={[styles.errorHint, { color: theme.colors.onSurfaceVariant }] }>
+                    Verifica que los dispositivos estén configurados y el token sea válido
                   </Text>
                 </View>
               )}
@@ -271,6 +416,41 @@ const styles = StyleSheet.create({
   errorHint: {
     fontSize: 12,
     fontStyle: 'italic',
+  },
+  // Estilos para la sección de control del ventilador
+  ventilatorTestSection: {
+    marginTop: 16,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  ventilatorButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  ventilatorButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  ventilatorButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  onButton: {
+    // Estilos específicos para el botón de encender si es necesario
+  },
+  offButton: {
+    // Estilos específicos para el botón de apagar si es necesario
   },
 });
 

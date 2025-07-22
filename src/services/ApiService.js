@@ -73,6 +73,15 @@ async function fetchWithFallback(path, options = {}) {
   // Redirigir a la lógica principal de selección de IP
   return await fetchWithAutoIp(path, options);
 }
+// Devuelve el estado del sensor: 'ok', 'warning', 'critical', o 'unknown'
+export function getSensorStatus(sensor) {
+  if (!sensor || typeof sensor.current === 'undefined' || !sensor.ideal) return 'unknown';
+  if (typeof sensor.ideal.min === 'undefined' || typeof sensor.ideal.max === 'undefined') return 'unknown';
+  if (sensor.current < sensor.ideal.min * 0.8 || sensor.current > sensor.ideal.max * 1.2) return 'critical';
+  if (sensor.current < sensor.ideal.min || sensor.current > sensor.ideal.max) return 'warning';
+  return 'ok';
+}
+
 const apiService = {
   // Obtener dispositivos del usuario
   async getDispositivosForUser(userId = 1) {
@@ -301,6 +310,157 @@ const apiService = {
       return data;
     } catch (error) {
       console.error(`Error al controlar switch ${switchId}:`, error);
+      throw error;
+    }
+  },
+
+  // Obtener token de acceso del usuario desde el endpoint de Tuya
+  async getUserAccessToken(userId = 1) {
+    try {
+      console.log(`🔍 Obteniendo token para usuario ${userId}...`);
+      
+      // Endpoint específico de Tuya usa puerto 4204
+      const tuyaUrls = [
+        'http://192.168.100.17:4204',
+        'http://autoindoor.duckdns.org:4204'
+      ];
+      
+      let lastError;
+      for (const baseUrl of tuyaUrls) {
+        try {
+          const fullUrl = `${baseUrl}/ControllerTuya/tokens/${userId}`;
+          console.log(`🌀 [CURL] curl -X GET '${fullUrl}' -H 'accept: text/plain'`);
+          
+          const response = await fetch(fullUrl, {
+            method: 'GET',
+            headers: {
+              'accept': 'text/plain',
+            },
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            console.log(`🔍 Respuesta del endpoint de tokens (puerto 4204):`, data);
+            
+            // La respuesta es un array con objetos de token
+            if (data && Array.isArray(data) && data.length > 0) {
+              const tokenRecord = data[0]; // Tomar el primer token
+              const token = tokenRecord.token;
+              const expiracion = tokenRecord.expiracion;
+              const type = tokenRecord.type;
+              
+              if (token && token.trim() !== '') {
+                // Verificar si el token no ha expirado
+                if (expiracion) {
+                  const expirationDate = new Date(expiracion);
+                  const now = new Date();
+                  if (expirationDate <= now) {
+                    console.warn(`⚠️ Token para usuario ${userId} ha expirado (${expiracion})`);
+                    return null;
+                  }
+                }
+                
+                console.log(`✅ Token encontrado para usuario ${userId} (puerto 4204):`);
+                console.log(`   🔑 Token: ${token.substring(0, 10)}...`);
+                console.log(`   📅 Expira: ${expiracion || 'No especificado'}`);
+                console.log(`   🏷️ Tipo: ${type}`);
+                
+                return token;
+              } else {
+                console.warn(`⚠️ Usuario ${userId} no tiene token válido`);
+                return null;
+              }
+            } else {
+              console.warn(`⚠️ No se encontró token para usuario ${userId}`);
+              return null;
+            }
+          }
+          lastError = new Error(`Error HTTP: ${response.status} (${baseUrl})`);
+        } catch (error) {
+          lastError = error;
+          console.warn(`❌ Error conectando a ${baseUrl}:`, error.message);
+        }
+      }
+      
+      throw lastError || new Error('No se pudo conectar a ningún servidor Tuya en puerto 4204');
+      
+    } catch (error) {
+      console.error(`❌ Error al obtener token del usuario ${userId}:`, error);
+      
+      // Para desarrollo/testing, usar un token de placeholder
+      console.warn('🚨 USANDO TOKEN DE DESARROLLO - REEMPLAZAR EN PRODUCCIÓN');
+      return "DEV_TOKEN_PLACEHOLDER_REPLACE_WITH_REAL_TOKEN";
+    }
+  },
+
+  // Controlar ventilador automáticamente usando Tuya API
+  async controlVentilatorAutomatic(isOn, userId = 1) {
+    try {
+      console.log(`🌀 Controlando ventilador automático: ${isOn ? 'ENCENDER' : 'APAGAR'} (usuario: ${userId})`);
+      
+      // Obtener token del usuario
+      const token = await this.getUserAccessToken(userId);
+      if (!token) {
+        throw new Error('No se pudo obtener token de acceso para Tuya');
+      }
+      
+      // Buscar el device ID del ventilador en los dispositivos del usuario
+      let ventilatorDeviceId = null;
+      if (this._lastDevicesList && Array.isArray(this._lastDevicesList)) {
+        const ventilatorDevice = this._lastDevicesList.find(device => {
+          const deviceName = (device.nombre || device.name || '').toLowerCase();
+          return deviceName.includes('ventil') || deviceName.includes('fan') || deviceName.includes('aire');
+        });
+        
+        if (ventilatorDevice) {
+          // El devId de Tuya es el macAddress del dispositivo
+          ventilatorDeviceId = ventilatorDevice.macAddress || 
+                              ventilatorDevice.macaddress || 
+                              ventilatorDevice.mac;
+          
+          console.log(`📱 Dispositivo ventilador encontrado: ${ventilatorDevice.nombre || ventilatorDevice.name}`);
+          console.log(`🔑 Tuya Device ID (macAddress): ${ventilatorDeviceId}`);
+        }
+      }
+      
+      // Si no se encuentra el device ID, usar un fallback o lanzar error
+      if (!ventilatorDeviceId) {
+        console.warn('⚠️ No se encontró macAddress para el ventilador. Usando ID por defecto.');
+        ventilatorDeviceId = "ebde71784db0820181e5up"; // Fallback al ID conocido
+      }
+      
+      // Configurar el payload para Tuya API
+      const payload = {
+        header: {
+          name: "turnOnOff",
+          namespace: "control",
+          payloadVersion: 1
+        },
+        payload: {
+          accessToken: token,
+          devId: ventilatorDeviceId,
+          value: isOn ? 1 : 0 // 1 para encender, 0 para apagar
+        }
+      };
+      
+      // Llamar al endpoint directo de Tuya
+      const tuyaEndpoint = 'https://px1.tuyaeu.com/homeassistant/skill';
+      console.log(`🌀 [CURL] curl --location '${tuyaEndpoint}' --header 'Content-Type: application/json' --data '${JSON.stringify(payload)}'`);
+      
+      const response = await fetch(tuyaEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      const data = await response.json();
+      console.log(`✅ Ventilador controlado via Tuya API: ${isOn ? 'ENCENDIDO' : 'APAGADO'}`, data);
+      return data;
+      
+    } catch (error) {
+      console.error(`❌ Error al controlar ventilador automático:`, error);
       throw error;
     }
   },
@@ -762,35 +922,43 @@ const apiService = {
     };
 
     Object.entries(sensorData).forEach(([key, sensor]) => {
-      if (sensor.current < sensor.ideal.min || sensor.current > sensor.ideal.max) {
-        let alertType = 'warning';
-        let title = '';
-        let message = '';
-        
-        if (sensor.current < sensor.ideal.min * 0.8 || sensor.current > sensor.ideal.max * 1.2) {
-          alertType = 'critical';
-          title = 'Alerta Crítica';
-        } else {
-          title = 'Advertencia';
-        }
-        
-        if (sensor.current < sensor.ideal.min) {
-          message = `${sensorNames[key]} muy baja: ${sensor.current}${sensor.unit} (ideal: ${sensor.ideal.min}-${sensor.ideal.max}${sensor.unit})`;
-        } else {
-          message = `${sensorNames[key]} muy alta: ${sensor.current}${sensor.unit} (ideal: ${sensor.ideal.min}-${sensor.ideal.max}${sensor.unit})`;
-        }
+      if (
+        sensor &&
+        typeof sensor.current !== 'undefined' &&
+        sensor.ideal &&
+        typeof sensor.ideal.min !== 'undefined' &&
+        typeof sensor.ideal.max !== 'undefined'
+      ) {
+        if (sensor.current < sensor.ideal.min || sensor.current > sensor.ideal.max) {
+          let alertType = 'warning';
+          let title = '';
+          let message = '';
 
-        alerts.push({
-          id: alertId++,
-          type: alertType,
-          title: title,
-          message: message,
-          timestamp: new Date().toLocaleString('es-ES'),
-          isActive: true,
-          sensorKey: key,
-          deviceId: sensor.deviceId,
-          macAddress: sensor.macAddress
-        });
+          if (sensor.current < sensor.ideal.min * 0.8 || sensor.current > sensor.ideal.max * 1.2) {
+            alertType = 'critical';
+            title = 'Alerta Crítica';
+          } else {
+            title = 'Advertencia';
+          }
+
+          if (sensor.current < sensor.ideal.min) {
+            message = `${sensorNames[key]} muy baja: ${sensor.current}${sensor.unit} (ideal: ${sensor.ideal.min}-${sensor.ideal.max}${sensor.unit})`;
+          } else {
+            message = `${sensorNames[key]} muy alta: ${sensor.current}${sensor.unit} (ideal: ${sensor.ideal.min}-${sensor.ideal.max}${sensor.unit})`;
+          }
+
+          alerts.push({
+            id: alertId++,
+            type: alertType,
+            title: title,
+            message: message,
+            timestamp: new Date().toLocaleString('es-ES'),
+            isActive: true,
+            sensorKey: key,
+            deviceId: sensor.deviceId,
+            macAddress: sensor.macAddress
+          });
+        }
       }
     });
 
